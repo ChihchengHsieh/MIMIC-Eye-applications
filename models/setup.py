@@ -72,8 +72,8 @@ class ModelSetup:
     # Model related params
     #######################
     
-    representation_size: int = 1024
-    mask_hidden_layers: int = 256
+    representation_size: int = 64
+    mask_hidden_layers: int = 64
 
     using_fpn: bool = False # the fpn is only implemented for ResNet and SwinTranformer.
     use_mask: bool = True

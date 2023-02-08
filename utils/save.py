@@ -131,6 +131,7 @@ def remove_previous_model(previous_model: str):
 
 
 def check_best(
+    setup,
     train_info: TrainingInfo,
     val_ap_ar,
     eval_params_dict: Dict,
@@ -151,6 +152,7 @@ def check_best(
     if val_ar > train_info.best_val_ar or val_ap > train_info.best_val_ap:
         if test_ap_ar is None:
             train_info.test_evaluator, test_logger = evaluate(
+                setup=setup,
                 model=model,
                 data_loader=test_dataloader,
                 device=device,
@@ -198,6 +200,7 @@ def check_best(
 
 
 def end_train(
+    setup,
     train_info: TrainingInfo,
     model: nn.Module,
     optim: Optimizer,
@@ -228,6 +231,7 @@ def end_train(
         )
 
     train_info.test_evaluator, test_logger = evaluate(
+        setup=setup,
         model=model,
         data_loader=test_dataloader,
         device=device,

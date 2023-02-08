@@ -17,14 +17,13 @@ class ExtractFusePerform(nn.Module):
         self.__input_checking(x, targets)
         self.prepare(x, targets)
 
-
         # extract feature maps # doesn't allow the feature extractors created but not used.
         feature_maps = { k: self.feature_extractors[k](x) for k in self.feature_extractors.keys()}
 
         fused = self.fusor(feature_maps)
 
-        outputs = { k: self.task_performers[k](x, fused, targets[k]) for k in self.task_performers.keys()}
 
+        outputs = { k: self.task_performers[k](x, fused, targets[k]) for k in self.task_performers.keys()}
 
         return outputs
 
@@ -61,6 +60,9 @@ class ExtractFusePerform(nn.Module):
 
         x['image_list'], targets['object-detection'] = self.task_performers['object-detection'].transform(x["image"], targets['object-detection'])
         self.task_performers['object-detection'].valid_bbox(targets['object-detection'])
+
+        # see if it's okay just keep the image list
+        del x['image']
 
         return x, targets
 

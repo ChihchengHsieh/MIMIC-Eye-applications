@@ -12,8 +12,9 @@ class NoActionFusor(GeneralFusor):
 
     def forward(self, x):
         assert len(x.keys()) == 1, "should only have one element in no action fusor"
-
-        return x[list(x.keys())[0]]
+        
+        out = x[list(x.keys())[0]]
+        return out  
 
 
 class ElementwiseSumFusor(GeneralFusor):

@@ -111,7 +111,9 @@ class ObjectDetectionWithMaskPerformer(GeneralTaskPerformer):
         if isinstance(z, torch.Tensor):
             z = OrderedDict([("0", z)])
 
+
         proposals, proposal_losses = self.rpn(x['image_list'], z, targets)
+
 
         detections, detector_losses = self.roi_heads(
             z,
@@ -119,6 +121,8 @@ class ObjectDetectionWithMaskPerformer(GeneralTaskPerformer):
             x["image_list"].image_sizes,
             targets,
         )
+
+
 
         detections = self.postprocess(
             detections, x["image_list"].image_sizes, x['original_image_sizes']
