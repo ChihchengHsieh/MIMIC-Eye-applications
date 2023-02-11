@@ -2,6 +2,7 @@
 #
 
 from collections import OrderedDict
+from typing import List
 import torch
 from torch import nn
 
@@ -12,34 +13,38 @@ from torchvision.models.detection.faster_rcnn import (
     RPNHead,
     FastRCNNPredictor,
     AnchorGenerator,
-    GeneralizedRCNNTransform,
 )
 
 from torchvision.models.detection.transform import resize_boxes, resize_keypoints
 from torchvision.models.detection.roi_heads import paste_masks_in_image
+
+from models.unet import UNetDecoder
 from .rcnn import (
+    EyeRCNNTransform,
     XAMIRegionProposalNetwork,
     XAMIRoIHeads,
     XAMITwoMLPHead,
 )
 
-from models.setup import ModelSetup
 
 class GeneralTaskPerformer(nn.Module):
     def __init__(self, name) -> None:
         self.name = name
         super().__init__()
 
+    def forward(self,  x, z, targets):
+        pass
+
 
 class ObjectDetectionPerformer(nn.Module):
     def __init__(self) -> None:
         super().__init__()
 
-class ObjectDetectionWithMaskParameters(object):
-    def __init__(self, image_size=256) -> None:
-        
-        self.image_size = image_size
 
+class ObjectDetectionWithMaskParameters(object):
+
+    def __init__(self, image_size=512) -> None:
+        self.image_size = image_size
         # rpn params
         self.rpn_pre_nms_top_n_train = 2000
         self.rpn_pre_nms_top_n_test = 1000
@@ -67,7 +72,6 @@ class ObjectDetectionWithMaskParameters(object):
 
         # self.anchor_sizes = ((32,), (64,), (128,), (256,), (512,))
         # self.aspect_ratios = ((0.5, 1.0, 2.0),) * len(self.anchor_sizes)
-
 
         self.anchor_sizes = ((32, 64, 128, 256, 512),)
         self.aspect_ratios = ((0.5, 1.0, 2.0),)
@@ -111,9 +115,7 @@ class ObjectDetectionWithMaskPerformer(GeneralTaskPerformer):
         if isinstance(z, torch.Tensor):
             z = OrderedDict([("0", z)])
 
-
         proposals, proposal_losses = self.rpn(x['image_list'], z, targets)
-
 
         detections, detector_losses = self.roi_heads(
             z,
@@ -121,8 +123,6 @@ class ObjectDetectionWithMaskPerformer(GeneralTaskPerformer):
             x["image_list"].image_sizes,
             targets,
         )
-
-
 
         detections = self.postprocess(
             detections, x["image_list"].image_sizes, x['original_image_sizes']
@@ -133,10 +133,9 @@ class ObjectDetectionWithMaskPerformer(GeneralTaskPerformer):
         losses.update(proposal_losses)
 
         return {
-            'losses':losses,
+            'losses': losses,
             'outputs': detections,
         }
-
 
     def postprocess(
         self,
@@ -211,7 +210,7 @@ class ObjectDetectionWithMaskPerformer(GeneralTaskPerformer):
         )
 
         box_predictor = FastRCNNPredictor(
-                params.XAMITwoMLPHead_representation_size, self.num_classes)
+            params.XAMITwoMLPHead_representation_size, self.num_classes)
 
         self.roi_heads = XAMIRoIHeads(
             # Box
@@ -234,7 +233,7 @@ class ObjectDetectionWithMaskPerformer(GeneralTaskPerformer):
         image_mean = [0.485, 0.456, 0.406]
         image_std = [0.229, 0.224, 0.225]
 
-        self.transform = GeneralizedRCNNTransform(
+        self.transform = EyeRCNNTransform(
             params.transform_min_size,
             params.transform_max_size,
             image_mean,
@@ -275,3 +274,42 @@ class ObjectDetectionWithMaskPerformer(GeneralTaskPerformer):
                             degen_bb, target_idx
                         )
                     )
+
+
+class HeatmapGeneratorParameters(object):
+
+    def __init__(self, input_channel, decoder_channels) -> None:
+        super().__init__()
+
+        self.input_channel = input_channel
+        self.decoder_channels = decoder_channels
+
+
+class HeatmapGenerator(GeneralTaskPerformer):
+
+    '''
+    Expecting targets -> {
+        heatmap: tensor        
+    }
+    '''
+
+    def __init__(self, params: HeatmapGeneratorParameters) -> None:
+        super().__init__("performer-heatmap_generator")
+        self.model = UNetDecoder(params.input_channel, params.decoder_channels)
+        self.loss_fn = nn.BCEWithLogitsLoss()
+
+    def forward(self, x, z, targets):
+        output = self.model(z)
+
+
+        self.targets = targets
+
+        loss = self.loss_fn(z, torch.stack(
+            [t['fixations'] for t in targets], dim=0))
+
+        return {
+            'losses': {
+                "heatmap_loss": loss
+            },
+            'outputs': output,
+        }

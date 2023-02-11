@@ -1,8 +1,10 @@
-import random, torch
+import random
+import torch
 
-from typing import  Callable, Dict, Tuple
+from typing import Callable, Dict, Tuple
 from PIL import Image
 from torchvision.transforms import functional as F
+
 
 def _flip_coco_person_keypoints(kps, width):
     flip_inds = [0, 2, 1, 4, 3, 6, 5, 8, 7, 10, 9, 12, 11, 14, 13, 16, 15]
@@ -13,21 +15,16 @@ def _flip_coco_person_keypoints(kps, width):
     flipped_data[inds] = 0
     return flipped_data
 
+
 class Compose(object):
     def __init__(self, transforms):
         self.transforms = transforms
 
-    def __call__(self, image: Image.Image, target: Dict, fixation=None):
-
-        if not fixation is None:
-            for t in self.transforms:
-                image, target, fixation = t(image, target, fixation)
-                return image, target, fixation
-
+    def __call__(self, image: Image.Image, target: Dict):
         for t in self.transforms:
-
             image, target = t(image, target)
         return image, target
+
 
 class RandomHorizontalFlip(object):
     def __init__(self, prob: float):
@@ -49,11 +46,12 @@ class RandomHorizontalFlip(object):
                 target["keypoints"] = keypoints
         return image, target
 
+
 class HorizontalFlipTransform(object):
     def __init__(self, prob: float):
         self.prob: float = prob
 
-    def __call__(self, image: torch.Tensor, target: Dict, fixation=None) -> Tuple[torch.Tensor, Dict]:
+    def __call__(self, image: torch.Tensor, target: Dict) -> Tuple[torch.Tensor, Dict]:
         if random.random() < self.prob:
             _, width = image.shape[-2:]
             image = image.flip(-1)
@@ -62,6 +60,10 @@ class HorizontalFlipTransform(object):
             target["boxes"] = bbox
             if "masks" in target:
                 target["masks"] = target["masks"].flip(-1)
+
+            if "fixations" in target:
+                target['fixations'] = target["fixations"].flip(-1)
+
             if "keypoints" in target:
                 raise StopIteration()
                 keypoints = target["keypoints"]
@@ -71,18 +73,14 @@ class HorizontalFlipTransform(object):
             # if not fixation is None:
             #     fixation = fixation.flip(-1)
 
-        if fixation is None:
-            return (image, target)
-        else:
-            return (image, target, fixation)
+        return (image, target)
 
 
 class ToTensor(object):
-    def __call__(self, image: Image.Image, target: Dict, fixation=None) -> Tuple[torch.Tensor, Dict]:
+    def __call__(self, image: Image.Image, target: Dict) -> Tuple[torch.Tensor, Dict]:
         image = F.to_tensor(image)
-        if not fixation is None:
-            fixation = F.to_tensor(fixation)
-            return image, target, fixation
+        if "fixations" in target:
+            target["fixations"] = F.to_tensor(target['fixations'])
         return image, target
 
 

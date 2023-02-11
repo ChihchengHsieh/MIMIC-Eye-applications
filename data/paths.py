@@ -7,9 +7,8 @@ from typing import Union
 Data Paths
 '''
 
-# XAMI_MIMIC_PATH = "D:\XAMI-MIMIC"
-# MIMIC_EYE_PATH = "/Users/jrhs/Desktop/mimic-eye"
-MIMIC_EYE_PATH = "D:\mimic-eye"
+MIMIC_EYE_PATH = "/Users/jrhs/Desktop/mimic-eye"
+# MIMIC_EYE_PATH = "D:\mimic-eye"
 PHYSIO_PATH = "E:\physionet.org"
 SPREADSHEET_FOLDER = "spreadsheets"
 
