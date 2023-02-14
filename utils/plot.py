@@ -11,7 +11,7 @@ from matplotlib.patches import Rectangle
 from matplotlib import colors
 from utils.pred import pred_thrs_check
 from utils.save import get_data_from_metric_logger
-from data.datasets import ReflacxObjectDetectionDataset, collate_fn
+from data.datasets import ReflacxDataset, collate_fn
 from utils.detect_utils import MetricLogger
 from utils.coco_eval import CocoEvaluator, external_summarize
 
@@ -501,7 +501,7 @@ def plot_bbox(
 
 def plot_result(
     model: nn.Module,
-    dataset: ReflacxObjectDetectionDataset,
+    dataset: ReflacxDataset,
     device: str,
     idx: int,
     legend_elements: List[Line2D],

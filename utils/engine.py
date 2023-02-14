@@ -4,33 +4,28 @@ import torch.nn as nn
 
 from models.setup import ModelSetup
 
-from .coco_utils import get_coco_api_from_dataset
 from .coco_eval import CocoEvaluator
 
 from . import detect_utils
-from data.helpers import map_target_to_device
+from data.helpers import map_dict_elements_to_device
 
-from models.detectors.rcnn import MultimodalMaskRCNN
 from .pred import pred_thrs_check
 from torch.utils.data import DataLoader, Dataset
 from torch.optim.optimizer import Optimizer
 
 cpu_device = torch.device("cpu")
 
+
 def get_iou_types(model: nn.Module, setup: ModelSetup) -> List[str]:
     model_without_ddp = model
     if isinstance(model, torch.nn.parallel.DistributedDataParallel):
         model_without_ddp = model.module
     iou_types = ["bbox"]
-    if (
-        isinstance(model_without_ddp, torchvision.models.detection.MaskRCNN)
-        or isinstance(model_without_ddp, MultimodalMaskRCNN)
-    ) and setup.use_mask:
+    if setup.use_mask:
         iou_types.append("segm")
     if isinstance(model_without_ddp, torchvision.models.detection.KeypointRCNN):
         iou_types.append("keypoints")
     return iou_types
-
 
 
 def train_one_epoch(
@@ -70,14 +65,21 @@ def train_one_epoch(
     #     )
 
     for data in metric_logger.log_every(data_loader, print_freq, header):
-        inputs, targets = data_loader.dataset.prepare_input_from_data(data, device)
+        # inputs, targets = data_loader.dataset.prepare_input_from_data(data, device)
+        inputs, targets = data_loader.dataset.prepare_input_from_data(data)
+        inputs, targets = model.prepare(inputs, targets)
+        inputs = map_dict_elements_to_device(inputs, device)
+        targets = [map_dict_elements_to_device(t, device) for t in targets]
+
         with torch.cuda.amp.autocast(enabled=False):
             outputs = model(inputs, targets=targets)
             # loss_dict = loss_multiplier(loss_dict,epoch)
 
             all_losses = {}
             for task in outputs.keys():
-                all_losses.update({f"{task}_{k}": v for k, v in outputs[task]['losses'].items()})
+                all_losses.update(
+                    {f"{task}_{k}": v for k, v in outputs[task]["losses"].items()}
+                )
 
             if dynamic_loss_weight:
                 losses = dynamic_loss_weight(all_losses)
@@ -105,7 +107,7 @@ def train_one_epoch(
         metric_logger.update(lr=optimizer.param_groups[0]["lr"])
 
         if evaluate_on_run:
-            obj_dts =  outputs['object-detection']['outputs']
+            obj_dts = outputs["object-detection"]["outputs"]
             if not score_thres is None:
                 obj_dts = [
                     pred_thrs_check(pred, data_loader.dataset, score_thres, device)
@@ -117,8 +119,7 @@ def train_one_epoch(
             ]
 
             res = {
-                target["image_id"].item(): dt
-                for target, dt in zip(targets['object-detection'], obj_dts)
+                target["image_id"].item(): dt for target, dt in zip(targets, obj_dts)
             }
             coco_evaluator.update(res)
 
@@ -136,7 +137,7 @@ def train_one_epoch(
 
 @torch.inference_mode()
 def evaluate(
-    setup: ModelSetup, 
+    setup: ModelSetup,
     model: nn.Module,
     data_loader: DataLoader,
     device: str,
@@ -156,7 +157,10 @@ def evaluate(
     coco_evaluator = CocoEvaluator(coco, iou_types, params_dict)
 
     for data in metric_logger.log_every(data_loader, 100, header):
-        inputs, targets = data_loader.dataset.prepare_input_from_data(data, device)
+        inputs, targets = data_loader.dataset.prepare_input_from_data(data)
+        inputs, targets = model.prepare(inputs, targets)
+        inputs = map_dict_elements_to_device(inputs, device)
+        targets = [map_dict_elements_to_device(t, device) for t in targets]
 
         if torch.cuda.is_available():
             torch.cuda.synchronize()
@@ -166,14 +170,16 @@ def evaluate(
 
         all_losses = {}
         for task in outputs.keys():
-            all_losses.update({f"{task}_{k}": v for k, v in outputs[task]['losses'].items()})
+            all_losses.update(
+                {f"{task}_{k}": v for k, v in outputs[task]["losses"].items()}
+            )
 
         loss_dict_reduced = detect_utils.reduce_dict(all_losses)
         losses_reduced = sum(loss for loss in loss_dict_reduced.values())
 
-        obj_dts =  outputs['object-detection']['outputs']
+        obj_dts = outputs["object-detection"]["outputs"]
         if not score_thres is None:
-            obj_dts = outputs['object-detection']['outputs']
+            obj_dts = outputs["object-detection"]["outputs"]
             obj_dts = [
                 pred_thrs_check(pred, data_loader.dataset, score_thres, device)
                 for pred in obj_dts
@@ -182,10 +188,7 @@ def evaluate(
         obj_dts = [{k: v.to(cpu_device) for k, v in t.items()} for t in obj_dts]
         model_time = time.time() - model_time
 
-        res = {
-            target["image_id"].item(): dt
-            for target, dt in zip(targets['object-detection'], obj_dts)
-        }
+        res = {target["image_id"].item(): dt for target, dt in zip(targets, obj_dts)}
 
         evaluator_time = time.time()
         coco_evaluator.update(res)

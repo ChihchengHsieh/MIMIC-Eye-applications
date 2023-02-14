@@ -164,7 +164,7 @@ def convert_to_coco_api(ds):
         # targets = ds.get_annotations(img_idx)
         # img, clinical_num, clinical_cat, targets = ds[img_idx]
         data= ds[img_idx]
-        img = data[0]
+        img = data[0]['image']
         targets = data[-1]
 
         image_id = targets["image_id"].item()

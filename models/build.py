@@ -1,92 +1,47 @@
-from cProfile import label
-import torchvision
+import torch.nn as nn
 
-from typing import List
-
-from models.backbones import get_normal_backbone
-# from models.fpn_builders import (
-#     multimodal_maskrcnn_resnet_fpn,
-#     multimodal_maskrcnn_swin_fpn,
-# )
+from data.constants import DEFAULT_REFLACX_LABEL_COLS
+from .backbones import get_normal_backbone
 from .setup import ModelSetup
-from .detectors.rcnn import MultimodalMaskRCNN
-
-from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
-from torchvision.models.detection.mask_rcnn import MaskRCNNPredictor
-
-from torchvision.models.detection.faster_rcnn import (
-    FastRCNNPredictor,
-    AnchorGenerator,
-)
+from .components.feature_extractors import *
+from .components.task_performers import *
+from .components.fusors import *
+from .frameworks import *
 
 
-def create_multimodal_rcnn_model(
-    labels_cols: List[str], setup: ModelSetup, **kwargs,
-):
-    num_classes = len(labels_cols) + 1
+def create_model_from_setup(setup: ModelSetup):
 
-    if setup.using_fpn:
-        # Feature Pyramid Network: (https://arxiv.org/abs/1612.03144v2), implementted for ResNet and SwinTranformer.
-        if setup.backbone.startswith("resnet"):
-            print("Using ResNet as backbone")
-            model = multimodal_maskrcnn_resnet_fpn(setup=setup, **kwargs,)
+    feature_extractors = nn.ModuleDict()
 
-        elif setup.backbone == "swin":
-            print("Using SwinTransformer as backbone")
-            model = multimodal_maskrcnn_swin_fpn(setup, **kwargs,)
-        else:
-            raise Exception(f"Unsupported FPN backbone {setup.backbone}")
+    if "image" in setup.sources:
+        backbone = get_normal_backbone(setup)
+        feature_extractors = nn.ModuleDict()
+        image_extractor = ImageFeatureExtractor(backbone)
+        feature_extractors.update({"image": image_extractor})
 
-    else:
-        model = multimodal_maskrcnn_with_backbone(setup=setup, **kwargs,)
+    fusor = NoActionFusor()
 
-    # get number of input features for the classifier
-    in_features = model.roi_heads.box_predictor.cls_score.in_features
-    # replace the pre-trained head with a new one
-    model.roi_heads.box_predictor = FastRCNNPredictor(in_features, num_classes)
+    task_performers = nn.ModuleDict()
 
-    # now get the number of input features for the mask classifier
-    if setup.use_mask:
-        print(f"{setup.name} will use mask, [{setup.mask_hidden_layers}] layers.")
-        in_features_mask = model.roi_heads.mask_predictor.conv5_mask.in_channels
-        # and replace the mask predictor with a new one
-        model.roi_heads.mask_predictor = MaskRCNNPredictor(
-            in_features_mask, setup.mask_hidden_layers, num_classes
+    if "object-detection" in setup.tasks:
+        obj_params = ObjectDetectionParameters(image_size=setup.image_size)
+        obj_performer = ObjectDetectionPerformer(
+            obj_params, image_extractor.backbone.out_channels, len(setup.label_cols) + 1,
         )
+        task_performers.update({"object-detection": obj_performer})
+
+    if "heatmap-generation" in setup.tasks:
+        fix_params = HeatmapGeneratorParameters(
+            input_channel=backbone.out_channels, decoder_channels=setup.decoder_channels
+        )  # the output should be just one channel.
+        fix_performer = HeatmapGenerator(params=fix_params,)
+        task_performers.update({"heatmap-generation": fix_performer})
+
+    model = ExtractFusePerform(
+        feature_extractors=nn.ModuleDict(feature_extractors),
+        fusor=fusor,
+        task_performers=nn.ModuleDict(task_performers),
+    )
 
     return model
 
-
-def multimodal_maskrcnn_with_backbone(
-    setup: ModelSetup, num_classes=91, **kwargs,
-):
-    image_backbone = get_normal_backbone(
-        setup=setup, pretrained_backbone=setup.image_backbone_pretrained
-    )
-    anchor_generator = AnchorGenerator(
-        sizes=((32, 64, 128, 256, 512),), aspect_ratios=((0.5, 1.0, 2.0),)
-    )
-
-    roi_pooler = torchvision.ops.MultiScaleRoIAlign(
-        featmap_names=["0"], output_size=7, sampling_ratio=2
-    )
-
-    heatmaps_backbone = (
-        get_normal_backbone(
-            setup=setup, pretrained_backbone=setup.heatmap_backbone_pretrained
-        )
-        if setup.use_heatmaps
-        else None
-    )
-
-    model = MultimodalMaskRCNN(
-        setup,
-        image_backbone,
-        num_classes,
-        rpn_anchor_generator=anchor_generator,
-        box_roi_pool=roi_pooler,
-        heatmap_backbone=heatmaps_backbone,
-        **kwargs,
-    )
-
-    return model

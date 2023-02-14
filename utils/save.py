@@ -214,8 +214,9 @@ def end_train(
     score_thres: Dict[str, float] = None,
     dynamic_weight: nn.Module = None,
 ) -> TrainingInfo:
-    train_info.end_t = datetime.now()
-    sec_took = (train_info.end_t - train_info.start_t).seconds
+
+    train_info.timer.end_training()
+    sec_took = train_info.timer.has_took_sec()
 
     print_f.print_title(
         f"| Training Done, start testing! | [{train_info.epoch}] Epochs Training time: [{sec_took}] seconds, Avg time / Epoch: [{sec_took/train_info.epoch}] seconds"

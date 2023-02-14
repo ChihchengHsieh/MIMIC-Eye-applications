@@ -33,6 +33,7 @@ class DecoderBlock(nn.Module):
     def forward(self, x):
         x = F.interpolate(x, scale_factor=2, mode="nearest")
         x = self.convs(x)
+
         return x
 
 
@@ -78,4 +79,5 @@ class UNetDecoder(nn.Module):
         # for i, decoder_block in enumerate(self.blocks):
         #     skip = skips[i] if i < len(skips) else None
         #     x = decoder_block(x, skip)
-        return self.model(x)
+        x = self.model(x)
+        return x

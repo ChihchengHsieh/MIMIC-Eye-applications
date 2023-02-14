@@ -19,3 +19,5 @@ class DynamicWeightedLoss(nn.Module):
                 1 + self.params[k] ** 2
             )
         return loss_sum
+
+        

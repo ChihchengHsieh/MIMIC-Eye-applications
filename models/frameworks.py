@@ -20,16 +20,13 @@ class ExtractFusePerform(nn.Module):
         # the transform should be done here. (or even higher level)
 
         self.__input_checking(x, targets)
-        x, targets = self.prepare(x, targets)
+        # x, targets = self.prepare(x, targets) # the prepare should be ran outside of this framework to optimise the memory usage.
 
         # extract feature maps # doesn't allow the feature extractors created but not used.
+
         feature_maps = { k: self.feature_extractors[k](x) for k in self.feature_extractors.keys()}
 
         fused = self.fusor(feature_maps)
-
-
-        print(f"before task performers, the size is {targets[0]['fixations'].shape}")
-
 
         outputs = { k: self.task_performers[k](x, fused, targets) for k in self.task_performers.keys()}
 
@@ -75,9 +72,26 @@ class ExtractFusePerform(nn.Module):
         # see if it's okay just keep the image list
         del x['images'] 
 
-        print(f"after preparation, the size is {targets[0]['fixations'].shape}")
-
         return x, targets
+
+    def get_all_losses_keys(self,):
+
+        loss_keys = []
+        for k, p in self.task_performers.items():
+            for l in p.loses:
+                loss_keys.append(f"{k}_{l}")
+
+        return loss_keys
+
+    def get_all_params(self, dynamic_loss_weight=None):
+        params = [p for p in self.parameters() if p.requires_grad]
+        if dynamic_loss_weight:
+            params += [p for p in dynamic_loss_weight.parameters() if p.requires_grad]
+        return params
+
+
+
+
 
 
 

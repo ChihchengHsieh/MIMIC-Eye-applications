@@ -2,7 +2,7 @@ import torch, random
 import numpy as np
 
 from typing import Dict, Tuple
-from .datasets import ReflacxObjectDetectionDataset, collate_fn
+from .datasets import ReflacxDataset, collate_fn
 from .transforms import get_tensorise_h_flip_transform
 from torch.utils.data import DataLoader
 
@@ -19,22 +19,22 @@ def get_dataloader_g(seed: int = 0):
 
 def get_datasets(
     dataset_params_dict: Dict,
-) -> Tuple[ReflacxObjectDetectionDataset, ReflacxObjectDetectionDataset, ReflacxObjectDetectionDataset, ReflacxObjectDetectionDataset]:
+) -> Tuple[ReflacxDataset, ReflacxDataset, ReflacxDataset, ReflacxDataset]:
 
-    detect_eval_dataset = ReflacxObjectDetectionDataset(
+    detect_eval_dataset = ReflacxDataset(
         **{**dataset_params_dict,}, # , "dataset_mode": "unified"
         transforms=get_tensorise_h_flip_transform(train=False),
     )
 
-    train_dataset = ReflacxObjectDetectionDataset(
+    train_dataset = ReflacxDataset(
         **dataset_params_dict, split_str="train", transforms=get_tensorise_h_flip_transform(train=True), 
     )
 
-    val_dataset = ReflacxObjectDetectionDataset(
+    val_dataset = ReflacxDataset(
         **dataset_params_dict, split_str="val", transforms=get_tensorise_h_flip_transform(train=False),
     )
 
-    test_dataset = ReflacxObjectDetectionDataset(
+    test_dataset = ReflacxDataset(
         **dataset_params_dict, split_str="test", transforms=get_tensorise_h_flip_transform(train=False),
     )
 
@@ -42,9 +42,9 @@ def get_datasets(
 
 
 def get_dataloaders(
-    train_dataset: ReflacxObjectDetectionDataset,
-    val_dataset: ReflacxObjectDetectionDataset,
-    test_dataset: ReflacxObjectDetectionDataset,
+    train_dataset: ReflacxDataset,
+    val_dataset: ReflacxDataset,
+    test_dataset: ReflacxDataset,
     batch_size: int = 4,
     seed: int = 0,
 ) -> Tuple[DataLoader, DataLoader, DataLoader]:

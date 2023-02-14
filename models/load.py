@@ -2,22 +2,22 @@ import os, pickle, torch
 import torch.nn as nn
 from typing import Dict, Tuple, Union
 from models.dynamic_loss import DynamicWeightedLoss
-from utils.train import get_optimiser
+from utils.train import get_dynamic_loss, get_optimiser
 
-from .build import create_multimodal_rcnn_model
+from .build import create_model_from_setup
 from .train import TrainingInfo
 from torch.optim.optimizer import Optimizer
 from .setup import ModelSetup
 
 
 def get_trained_model(
-    model_select, labels_cols, device, **kwargs,
+    model_select, device,
 ) -> Tuple[nn.Module, TrainingInfo, Union[Optimizer, None]]:
 
     with open(os.path.join("training_records", f"{model_select.value}.pkl"), "rb") as f:
         train_info: TrainingInfo = pickle.load(f)
 
-    model = create_multimodal_rcnn_model(labels_cols, train_info.model_setup, **kwargs,)
+    model = create_model_from_setup(train_info.model_setup)
     model.to(device)
 
     cp: Dict = torch.load(
@@ -27,25 +27,14 @@ def get_trained_model(
     model.load_state_dict(cp["model_state_dict"])
 
     model.to(device)
-    params = [p for p in model.parameters() if p.requires_grad]
 
     dynamic_loss_weight = None
     if "dynamic_weight_state_dict" in cp:
-        loss_keys = [
-            "loss_classifier",
-            "loss_box_reg",
-            "loss_objectness",
-            "loss_rpn_box_reg",
-        ]
-
-        dynamic_loss_weight = DynamicWeightedLoss(
-            keys=loss_keys + ["loss_mask"]
-            if train_info.model_setup.use_mask
-            else loss_keys
-        )
+        dynamic_loss_weight = get_dynamic_loss(loss_keys=model.get_all_losses_keys(), device=device)
         dynamic_loss_weight.to(device)
         dynamic_loss_weight.load_state_dict(cp["dynamic_weight_state_dict"])
-        params += [p for p in dynamic_loss_weight.parameters() if p.requires_grad]
+
+    params = model.get_all_params(dynamic_loss_weight=dynamic_loss_weight)
 
     optim = None
     if "optimizer_state_dict" in cp:

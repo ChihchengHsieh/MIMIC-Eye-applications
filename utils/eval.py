@@ -119,6 +119,8 @@ def get_ap_ar_for_train_val(
 
 
 def save_iou_results(evaluator: CocoEvaluator, suffix: str, model_path: str):
+    os.makedirs("./eval_results",exist_ok=True)
+
     ap_ar_dict = OrderedDict(
         {thrs: [] for thrs in evaluator.coco_eval["bbox"].params.iouThrs}
     )

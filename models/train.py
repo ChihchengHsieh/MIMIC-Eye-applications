@@ -1,6 +1,41 @@
 from datetime import datetime
 from .setup import ModelSetup
-from enum import Enum
+
+class TrainingTimer(object):
+    
+    def __init__(self) -> None:
+        self.init_t = datetime.now()
+        self.start_t = None
+        self.end_t = None
+        self.last_epoch = None
+        self.epoch_start_t = None
+
+
+    def start_training(self,):
+        self.start_t = datetime.now()
+    
+    def start_epoch(self, ):
+        self.epoch_start_t = datetime.now()
+
+    def end_epoch(self, epoch):
+        self.last_epoch = epoch
+
+        finish_time = datetime.now()
+        epoch_took =  finish_time - self.epoch_start_t 
+
+        sec_already_took = (finish_time - self.start_t).seconds
+        speed = sec_already_took / self.last_epoch
+
+        return epoch_took, sec_already_took, speed
+
+    def end_training(self, ):
+        self.end_t = datetime.now()
+
+    def has_took_sec_from_init(self,):
+        return (datetime.now()-self.init_t).seconds
+        
+    def has_took_sec(self,):
+        return (datetime.now()-self.start_t).seconds
 
 
 class TrainingInfo:
@@ -26,8 +61,7 @@ class TrainingInfo:
         self.previous_ar_model = None
         self.previous_ap_model = None
         self.model_setup = model_setup
-        self.start_t = datetime.now()
-        self.end_t = None
+        self.timer = TrainingTimer()
         self.epoch = 0
         super(TrainingInfo).__init__()
 

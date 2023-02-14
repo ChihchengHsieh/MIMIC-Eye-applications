@@ -1,8 +1,6 @@
 from typing import Dict
 import torch
 
-from data.datasets import ReflacxObjectDetectionDataset
-
 def pred_thrs_check(
     pred: Dict, dataset, score_thres: Dict, device: str
 )-> Dict:
