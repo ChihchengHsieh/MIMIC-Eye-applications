@@ -10,7 +10,6 @@ from .frameworks import *
 
 
 def create_model_from_setup(setup: ModelSetup):
-
     feature_extractors = nn.ModuleDict()
 
     if "image" in setup.sources:
@@ -23,19 +22,19 @@ def create_model_from_setup(setup: ModelSetup):
 
     task_performers = nn.ModuleDict()
 
-    if "object-detection" in setup.tasks:
-        obj_params = ObjectDetectionParameters(image_size=setup.image_size)
-        obj_performer = ObjectDetectionPerformer(
-            obj_params, image_extractor.backbone.out_channels, len(setup.label_cols) + 1,
+    if "lesion-detection" in setup.tasks:
+        lesion_params = ObjectDetectionParameters(image_size=setup.image_size)
+        lesion_performer = ObjectDetectionPerformer(
+            lesion_params, image_extractor.backbone.out_channels, len(setup.label_cols) + 1,
         )
-        task_performers.update({"object-detection": obj_performer})
+        task_performers.update({"lesion-detection": lesion_performer})
 
-    if "heatmap-generation" in setup.tasks:
+    if "fixation-generation" in setup.tasks:
         fix_params = HeatmapGeneratorParameters(
             input_channel=backbone.out_channels, decoder_channels=setup.decoder_channels
         )  # the output should be just one channel.
         fix_performer = HeatmapGenerator(params=fix_params,)
-        task_performers.update({"heatmap-generation": fix_performer})
+        task_performers.update({"fixation-generation": fix_performer})
 
     model = ExtractFusePerform(
         feature_extractors=nn.ModuleDict(feature_extractors),

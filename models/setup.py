@@ -1,6 +1,8 @@
+from ast import Dict
 from dataclasses import dataclass, field
 from typing import List
 import numpy as np
+
 
 @dataclass
 class ModelSetup:
@@ -13,15 +15,19 @@ class ModelSetup:
     name: str = None
 
     sources: List[str] = field(default_factory=lambda: ["image"])
-    tasks: List[str] = field(
-        default_factory=lambda: ["object-detection", "heatmap-generation"]
+    tasks: List[Dict] = field(
+        default_factory=lambda: [
+            {"lesion-detection": {}}, {"fixation-generation": {
+                
+            }}]
     )
 
-    ###### heatmap generation
-    decoder_channels: List[int] = field(default_factory=lambda: [64, 32, 16, 8, 1])
+    # heatmap generation
+    decoder_channels: List[int] = field(
+        default_factory=lambda: [64, 32, 16, 8, 1])
 
     label_cols: List[str] = field(
-        default_factory=lambda:[
+        default_factory=lambda: [
             # "Fibrosis",
             # "Quality issue",
             # "Wide mediastinum",
@@ -95,10 +101,11 @@ class ModelSetup:
     reduceLROnPlateau_patience: int = 3
     reduceLROnPlateau_full_stop: bool = False
 
-    multiStepLR_milestones: List[int] = field(default_factory=lambda: [30, 50, 70, 90])
+    multiStepLR_milestones: List[int] = field(
+        default_factory=lambda: [30, 50, 70, 90])
     multiStepLR_gamma: float = 0.1
 
-    ## For warming up the training, but found not useful in our case.
+    # For warming up the training, but found not useful in our case.
     # warmup_epoch: int = 10
     # warmup_factor: float = 1.0 / 1000;
 
@@ -109,7 +116,8 @@ class ModelSetup:
     representation_size: int = 64
     mask_hidden_layers: int = 64
 
-    using_fpn: bool = False  # the fpn is only implemented for ResNet and SwinTranformer.
+    # the fpn is only implemented for ResNet and SwinTranformer.
+    using_fpn: bool = False
     use_mask: bool = True
 
     fuse_conv_channels: int = 32
@@ -127,5 +135,6 @@ class ModelSetup:
     eval_freq: int = 10
 
     use_iobb: bool = True
-    iou_thrs: np.array = field(default_factory=lambda:np.array([0.5]))
+    iou_thrs: np.array = field(default_factory=lambda: np.array([0.5]))
 
+    fiaxtions_mode: str = "normal"  # [normal, reporting, silent]

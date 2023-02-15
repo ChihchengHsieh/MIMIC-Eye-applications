@@ -511,7 +511,7 @@ class XAMIRoIHeads(nn.Module):
         keypoint_roi_pool=None,
         keypoint_head=None,
         keypoint_predictor=None,
-        use_gt_in_train=True,
+        use_gt_in_train=False,
         across_class_nms_thresh=None,
     ):
         super().__init__()
