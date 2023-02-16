@@ -1,3 +1,6 @@
+from torchvision.models.detection.roi_heads import paste_masks_in_image
+import math
+from torchvision.models.detection.image_list import ImageList
 import torch
 import torchvision
 import torchvision.models.detection._utils as det_utils
@@ -6,7 +9,6 @@ from typing import Any, Tuple, List, Dict, Optional
 import torch.nn.functional as F
 
 from torchvision.ops import boxes as box_ops
-from torchvision.models.detection.faster_rcnn import AnchorGenerator
 
 from torchvision.models.detection.roi_heads import (
     fastrcnn_loss,
@@ -31,7 +33,141 @@ def _onnx_get_num_anchors_and_pre_nms_top_n(ob, orig_pre_nms_top_n):
     return num_anchors, pre_nms_top_n
 
 
-from torchvision.models.detection.image_list import ImageList
+class XAMIAnchorGenerator(nn.Module):
+    """
+    Module that generates anchors for a set of feature maps and
+    image sizes.
+
+    The module support computing anchors at multiple sizes and aspect ratios
+    per feature map. This module assumes aspect ratio = height / width for
+    each anchor.
+
+    sizes and aspect_ratios should have the same number of elements, and it should
+    correspond to the number of feature maps.
+
+    sizes[i] and aspect_ratios[i] can have an arbitrary number of elements,
+    and AnchorGenerator will output a set of sizes[i] * aspect_ratios[i] anchors
+    per spatial location for feature map i.
+
+    Args:
+        sizes (Tuple[Tuple[int]]):
+        aspect_ratios (Tuple[Tuple[float]]):
+    """
+
+    __annotations__ = {
+        "cell_anchors": List[torch.Tensor],
+    }
+
+    def __init__(
+        self,
+        sizes=((128, 256, 512),),
+        aspect_ratios=((0.5, 1.0, 2.0),),
+    ):
+        super().__init__()
+
+        if not isinstance(sizes[0], (list, tuple)):
+            # TODO change this
+            sizes = tuple((s,) for s in sizes)
+        if not isinstance(aspect_ratios[0], (list, tuple)):
+            aspect_ratios = (aspect_ratios,) * len(sizes)
+
+        self.sizes = sizes
+        self.aspect_ratios = aspect_ratios
+        self.cell_anchors = [
+            self.generate_anchors(size, aspect_ratio) for size, aspect_ratio in zip(sizes, aspect_ratios)
+        ]
+
+    # TODO: https://github.com/pytorch/pytorch/issues/26792
+    # For every (aspect_ratios, scales) combination, output a zero-centered anchor with those values.
+    # (scales, aspect_ratios) are usually an element of zip(self.scales, self.aspect_ratios)
+    # This method assumes aspect ratio = height / width for an anchor.
+    def generate_anchors(
+        self,
+        scales: List[int],
+        aspect_ratios: List[float],
+        dtype: torch.dtype = torch.float32,
+        device: torch.device = torch.device("cpu"),
+    ):
+        scales = torch.as_tensor(scales, dtype=dtype, device=device)
+        aspect_ratios = torch.as_tensor(
+            aspect_ratios, dtype=dtype, device=device)
+        h_ratios = torch.sqrt(aspect_ratios)
+        w_ratios = 1 / h_ratios
+
+        ws = (w_ratios[:, None] * scales[None, :]).view(-1)
+        hs = (h_ratios[:, None] * scales[None, :]).view(-1)
+
+        base_anchors = torch.stack([-ws, -hs, ws, hs], dim=1) / 2
+        return base_anchors.round()
+
+    def set_cell_anchors(self, dtype: torch.dtype, device: torch.device):
+        self.cell_anchors = [cell_anchor.to(
+            dtype=dtype, device=device) for cell_anchor in self.cell_anchors]
+
+    def num_anchors_per_location(self):
+        return [len(s) * len(a) for s, a in zip(self.sizes, self.aspect_ratios)]
+
+    # For every combination of (a, (g, s), i) in (self.cell_anchors, zip(grid_sizes, strides), 0:2),
+    # output g[i] anchors that are s[i] distance apart in direction i, with the same dimensions as a.
+    def grid_anchors(self, grid_sizes: List[List[int]], strides: List[List[Tensor]]) -> List[Tensor]:
+        anchors = []
+        cell_anchors = self.cell_anchors
+        torch._assert(cell_anchors is not None,
+                      "cell_anchors should not be None")
+        torch._assert(
+            len(grid_sizes) == len(strides) == len(cell_anchors),
+            "Anchors should be Tuple[Tuple[int]] because each feature "
+            "map could potentially have different sizes and aspect ratios. "
+            "There needs to be a match between the number of "
+            "feature maps passed and the number of sizes / aspect ratios specified.",
+        )
+
+        for size, stride, base_anchors in zip(grid_sizes, strides, cell_anchors):
+            grid_height, grid_width = size
+            stride_height, stride_width = stride
+            device = base_anchors.device
+
+            # For output anchor, compute [x_center, y_center, x_center, y_center]
+            shifts_x = torch.arange(
+                0, grid_width, dtype=torch.int32, device=device) * stride_width
+            shifts_y = torch.arange(
+                0, grid_height, dtype=torch.int32, device=device) * stride_height
+            shift_y, shift_x = torch.meshgrid(
+                shifts_y, shifts_x, indexing="ij")
+            shift_x = shift_x.reshape(-1)
+            shift_y = shift_y.reshape(-1)
+            shifts = torch.stack((shift_x, shift_y, shift_x, shift_y), dim=1)
+
+            # For every (base anchor, output anchor) pair,
+            # offset each zero-centered base anchor by the center of the output anchor.
+            anchors.append(
+                (shifts.view(-1, 1, 4) + base_anchors.view(1, -1, 4)).reshape(-1, 4))
+
+        return anchors
+
+    def forward(self, image_list_tensors_shape, image_list_image_sizes, feature_maps: List[Tensor]) -> List[Tensor]:
+        grid_sizes = [feature_map.shape[-2:] for feature_map in feature_maps]
+        image_size = image_list_tensors_shape[-2:]
+        dtype, device = feature_maps[0].dtype, feature_maps[0].device
+        strides = [
+            [
+                torch.empty((), dtype=torch.int64, device=device).fill_(
+                    image_size[0] // g[0]),
+                torch.empty((), dtype=torch.int64, device=device).fill_(
+                    image_size[1] // g[1]),
+            ]
+            for g in grid_sizes
+        ]
+        self.set_cell_anchors(dtype, device)
+        anchors_over_all_feature_maps = self.grid_anchors(grid_sizes, strides)
+        anchors: List[List[torch.Tensor]] = []
+        for _ in range(len(image_list_image_sizes)):
+            anchors_in_image = [
+                anchors_per_feature_map for anchors_per_feature_map in anchors_over_all_feature_maps]
+            anchors.append(anchors_in_image)
+        anchors = [torch.cat(anchors_per_image)
+                   for anchors_per_image in anchors]
+        return anchors
 
 
 class XAMIMatcher:
@@ -90,7 +226,8 @@ class XAMIMatcher:
             be matched.
         """
         if match_quality_matrix.numel() == 0:
-            device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu") 
+            device = torch.device(
+                "cuda:0" if torch.cuda.is_available() else "cpu")
             return torch.tensor([], device=device)
             # # empty targets or proposals not supported during training
             # if match_quality_matrix.shape[0] == 0:
@@ -108,14 +245,16 @@ class XAMIMatcher:
 
         # Assign candidate matches with low quality to negative (unassigned) values
         below_low_threshold = matched_vals < self.low_threshold
-        between_thresholds = (matched_vals >= self.low_threshold) & (matched_vals < self.high_threshold)
+        between_thresholds = (matched_vals >= self.low_threshold) & (
+            matched_vals < self.high_threshold)
         matches[below_low_threshold] = self.BELOW_LOW_THRESHOLD
         matches[between_thresholds] = self.BETWEEN_THRESHOLDS
 
         if self.allow_low_quality_matches:
             assert all_matches is not None
-            self.set_low_quality_matches_(matches, all_matches, match_quality_matrix)
-        
+            self.set_low_quality_matches_(
+                matches, all_matches, match_quality_matrix)
+
         return matches
 
     def set_low_quality_matches_(self, matches: Tensor, all_matches: Tensor, match_quality_matrix: Tensor) -> None:
@@ -129,7 +268,8 @@ class XAMIMatcher:
         # For each gt, find the prediction with which it has highest quality
         highest_quality_foreach_gt, _ = match_quality_matrix.max(dim=1)
         # Find highest quality match available, even if it is low, including ties
-        gt_pred_pairs_of_highest_quality = torch.where(match_quality_matrix == highest_quality_foreach_gt[:, None])
+        gt_pred_pairs_of_highest_quality = torch.where(
+            match_quality_matrix == highest_quality_foreach_gt[:, None])
         # Example gt_pred_pairs_of_highest_quality:
         #   tensor([[    0, 39796],
         #           [    1, 32055],
@@ -213,7 +353,7 @@ class XAMIRegionProposalNetwork(torch.nn.Module):
 
     def __init__(
         self,
-        anchor_generator: AnchorGenerator,
+        anchor_generator: XAMIAnchorGenerator,
         head: nn.Module,
         # Faster-RCNN Training
         fg_iou_thresh: float,
@@ -274,16 +414,19 @@ class XAMIRegionProposalNetwork(torch.nn.Module):
                     anchors_per_image.shape, dtype=torch.float32, device=device
                 )
                 labels_per_image = torch.zeros(
-                    (anchors_per_image.shape[0],), dtype=torch.float32, device=device
+                    (anchors_per_image.shape[0],
+                     ), dtype=torch.float32, device=device
                 )
             else:
-                match_quality_matrix = self.box_similarity(gt_boxes, anchors_per_image)
+                match_quality_matrix = self.box_similarity(
+                    gt_boxes, anchors_per_image)
                 matched_idxs = self.proposal_matcher(match_quality_matrix)
                 # get the targets corresponding GT for each proposal
                 # NB: need to clamp the indices because we can have a single
                 # GT in the image, and matched_idxs can be -2, which goes
                 # out of bounds
-                matched_gt_boxes_per_image = gt_boxes[matched_idxs.clamp(min=0)]
+                matched_gt_boxes_per_image = gt_boxes[matched_idxs.clamp(
+                    min=0)]
 
                 labels_per_image = matched_idxs >= 0
                 labels_per_image = labels_per_image.to(dtype=torch.float32)
@@ -425,11 +568,9 @@ class XAMIRegionProposalNetwork(torch.nn.Module):
 
     def forward(
         self,
-        images: ImageList,
         features: Dict[str, Tensor],
         targets: Optional[List[Dict[str, Tensor]]] = None,
     ) -> Tuple[List[Tensor], Dict[str, Tensor]]:
-
         """
         Args:
             images (ImageList): images for which we want to compute the predictions
@@ -449,7 +590,8 @@ class XAMIRegionProposalNetwork(torch.nn.Module):
         # RPN uses all feature maps that are available
         features = list(features.values())
         objectness, pred_bbox_deltas = self.head(features)
-        anchors = self.anchor_generator(images, features)
+        anchors = self.anchor_generator(
+            targets['image_list_tensors_shape'], targets['image_list_image_sizes'], features)
 
         num_images = len(anchors)
         num_anchors_per_level_shape_tensors = [o[0].shape for o in objectness]
@@ -465,14 +607,16 @@ class XAMIRegionProposalNetwork(torch.nn.Module):
         proposals = self.box_coder.decode(pred_bbox_deltas.detach(), anchors)
         proposals = proposals.view(num_images, -1, 4)
         boxes, scores = self.filter_proposals(
-            proposals, objectness, images.image_sizes, num_anchors_per_level
+            proposals, objectness, targets['image_list_image_sizes'], num_anchors_per_level
         )
 
         losses = {}
         if not targets is None:
             assert targets is not None
-            labels, matched_gt_boxes = self.assign_targets_to_anchors(anchors, targets)
-            regression_targets = self.box_coder.encode(matched_gt_boxes, anchors)
+            labels, matched_gt_boxes = self.assign_targets_to_anchors(
+                anchors, targets)
+            regression_targets = self.box_coder.encode(
+                matched_gt_boxes, anchors)
             loss_objectness, loss_rpn_box_reg = self.compute_loss(
                 objectness, pred_bbox_deltas, labels, regression_targets
             )
@@ -481,6 +625,7 @@ class XAMIRegionProposalNetwork(torch.nn.Module):
                 "loss_rpn_box_reg": loss_rpn_box_reg,
             }
         return boxes, losses
+
 
 class XAMIRoIHeads(nn.Module):
     __annotations__ = {
@@ -578,10 +723,12 @@ class XAMIRoIHeads(nn.Module):
                 # Background image
                 device = proposals_in_image.device
                 clamped_matched_idxs_in_image = torch.zeros(
-                    (proposals_in_image.shape[0],), dtype=torch.int64, device=device
+                    (proposals_in_image.shape[0],
+                     ), dtype=torch.int64, device=device
                 )
                 labels_in_image = torch.zeros(
-                    (proposals_in_image.shape[0],), dtype=torch.int64, device=device
+                    (proposals_in_image.shape[0],
+                     ), dtype=torch.int64, device=device
                 )
             else:
                 #  set to self.box_similarity when https://github.com/pytorch/pytorch/issues/27495 lands
@@ -589,9 +736,11 @@ class XAMIRoIHeads(nn.Module):
                     gt_boxes_in_image, proposals_in_image
                 )
 
-                matched_idxs_in_image = self.proposal_matcher(match_quality_matrix)
+                matched_idxs_in_image = self.proposal_matcher(
+                    match_quality_matrix)
 
-                clamped_matched_idxs_in_image = matched_idxs_in_image.clamp(min=0)
+                clamped_matched_idxs_in_image = matched_idxs_in_image.clamp(
+                    min=0)
 
                 labels_in_image = gt_labels_in_image[clamped_matched_idxs_in_image]
                 labels_in_image = labels_in_image.to(dtype=torch.int64)
@@ -674,7 +823,8 @@ class XAMIRoIHeads(nn.Module):
 
             gt_boxes_in_image = gt_boxes[img_id]
             if gt_boxes_in_image.numel() == 0:
-                gt_boxes_in_image = torch.zeros((1, 4), dtype=dtype, device=device)
+                gt_boxes_in_image = torch.zeros(
+                    (1, 4), dtype=dtype, device=device)
             matched_gt_boxes.append(gt_boxes_in_image[matched_idxs[img_id]])
 
         regression_targets = self.box_coder.encode(matched_gt_boxes, proposals)
@@ -691,7 +841,8 @@ class XAMIRoIHeads(nn.Module):
         device = class_logits.device
         num_classes = class_logits.shape[-1]
 
-        boxes_per_image = [boxes_in_image.shape[0] for boxes_in_image in proposals]
+        boxes_per_image = [boxes_in_image.shape[0]
+                           for boxes_in_image in proposals]
         pred_boxes = self.box_coder.decode(box_regression, proposals)
 
         pred_scores = F.softmax(class_logits, -1)
@@ -738,7 +889,8 @@ class XAMIRoIHeads(nn.Module):
 
             if self.across_class_nms_thresh:
                 keep = box_ops.batched_nms(
-                    boxes, scores, torch.ones_like(labels), self.across_class_nms_thresh
+                    boxes, scores, torch.ones_like(
+                        labels), self.across_class_nms_thresh
                 )
                 keep = keep[: self.detections_per_img]
                 boxes, scores, labels = boxes[keep], scores[keep], labels[keep]
@@ -780,7 +932,6 @@ class XAMIRoIHeads(nn.Module):
                         t["keypoints"].dtype == torch.float32
                     ), "target keypoints must of float type"
 
-
         if targets:
             (
                 proposals,
@@ -792,7 +943,7 @@ class XAMIRoIHeads(nn.Module):
             labels = None
             regression_targets = None
             matched_idxs = None
-        
+
         box_features = self.box_roi_pool(features, proposals, image_shapes)
 
         box_features = self.box_head(box_features)
@@ -808,7 +959,8 @@ class XAMIRoIHeads(nn.Module):
             loss_classifier, loss_box_reg = fastrcnn_loss(
                 class_logits, box_regression, labels, regression_targets
             )
-            losses = {"loss_classifier": loss_classifier, "loss_box_reg": loss_box_reg}
+            losses = {"loss_classifier": loss_classifier,
+                      "loss_box_reg": loss_box_reg}
 
         pred_boxes, pred_scores, pred_labels = self.postprocess_detections(
             class_logits, box_regression, proposals, image_shapes
@@ -824,7 +976,6 @@ class XAMIRoIHeads(nn.Module):
                     "scores": pred_scores[i],
                 }
             )
-
 
         if self.has_mask():
             mask_proposals = [p["boxes"] for p in result]
@@ -881,9 +1032,6 @@ class XAMIRoIHeads(nn.Module):
         return result, losses
 
 
-import math
-from torchvision.models.detection.roi_heads import paste_masks_in_image
-
 @torch.jit.unused
 def _get_shape_onnx(image: Tensor) -> Tensor:
     from torch.onnx import operators
@@ -895,6 +1043,7 @@ def _get_shape_onnx(image: Tensor) -> Tensor:
 def _fake_cast_onnx(v: Tensor) -> float:
     # ONNX requires a tensor but here we fake its type for JIT.
     return v
+
 
 def _resize_image_and_targets(
     image: Tensor,
@@ -965,7 +1114,8 @@ def resize_keypoints(keypoints: Tensor, original_size: List[int], new_size: List
     if torch._C._get_tracing_state():
         resized_data_0 = resized_data[:, :, 0] * ratio_w
         resized_data_1 = resized_data[:, :, 1] * ratio_h
-        resized_data = torch.stack((resized_data_0, resized_data_1, resized_data[:, :, 2]), dim=2)
+        resized_data = torch.stack(
+            (resized_data_0, resized_data_1, resized_data[:, :, 2]), dim=2)
     else:
         resized_data[..., 0] *= ratio_w
         resized_data[..., 1] *= ratio_h
@@ -986,6 +1136,7 @@ def resize_boxes(boxes: Tensor, original_size: List[int], new_size: List[int]) -
     ymin = ymin * ratio_height
     ymax = ymax * ratio_height
     return torch.stack((xmin, ymin, xmax, ymax), dim=1)
+
 
 class EyeRCNNTransform(nn.Module):
 
@@ -1042,7 +1193,8 @@ class EyeRCNNTransform(nn.Module):
             target_index = targets[i] if targets is not None else None
 
             if image.dim() != 3:
-                raise ValueError(f"images is expected to be a list of 3d tensors of shape [C, H, W], got {image.shape}")
+                raise ValueError(
+                    f"images is expected to be a list of 3d tensors of shape [C, H, W], got {image.shape}")
             image = self.normalize(image)
             image, target_index = self.resize(image, target_index)
             images[i] = image
@@ -1095,7 +1247,8 @@ class EyeRCNNTransform(nn.Module):
         else:
             # FIXME assume for now that testing uses the largest scale
             size = float(self.min_size[-1])
-        image, target = _resize_image_and_targets(image, size, float(self.max_size), target, self.fixed_size)
+        image, target = _resize_image_and_targets(
+            image, size, float(self.max_size), target, self.fixed_size)
 
         if target is None:
             return image, target
@@ -1116,11 +1269,14 @@ class EyeRCNNTransform(nn.Module):
     def _onnx_batch_images(self, images: List[Tensor], size_divisible: int = 32) -> Tensor:
         max_size = []
         for i in range(images[0].dim()):
-            max_size_i = torch.max(torch.stack([img.shape[i] for img in images]).to(torch.float32)).to(torch.int64)
+            max_size_i = torch.max(torch.stack(
+                [img.shape[i] for img in images]).to(torch.float32)).to(torch.int64)
             max_size.append(max_size_i)
         stride = size_divisible
-        max_size[1] = (torch.ceil((max_size[1].to(torch.float32)) / stride) * stride).to(torch.int64)
-        max_size[2] = (torch.ceil((max_size[2].to(torch.float32)) / stride) * stride).to(torch.int64)
+        max_size[1] = (torch.ceil((max_size[1].to(torch.float32)
+                                   ) / stride) * stride).to(torch.int64)
+        max_size[2] = (torch.ceil((max_size[2].to(torch.float32)
+                                   ) / stride) * stride).to(torch.int64)
         max_size = tuple(max_size)
 
         # work around for
@@ -1129,7 +1285,8 @@ class EyeRCNNTransform(nn.Module):
         padded_imgs = []
         for img in images:
             padding = [(s1 - s2) for s1, s2 in zip(max_size, tuple(img.shape))]
-            padded_img = torch.nn.functional.pad(img, (0, padding[2], 0, padding[1], 0, padding[0]))
+            padded_img = torch.nn.functional.pad(
+                img, (0, padding[2], 0, padding[1], 0, padding[0]))
             padded_imgs.append(padded_img)
 
         return torch.stack(padded_imgs)
@@ -1157,7 +1314,8 @@ class EyeRCNNTransform(nn.Module):
         batched_imgs = images[0].new_full(batch_shape, 0)
         for i in range(batched_imgs.shape[0]):
             img = images[i]
-            batched_imgs[i, : img.shape[0], : img.shape[1], : img.shape[2]].copy_(img)
+            batched_imgs[i, : img.shape[0],
+                         : img.shape[1], : img.shape[2]].copy_(img)
 
         return batched_imgs
 
@@ -1190,5 +1348,3 @@ class EyeRCNNTransform(nn.Module):
         format_string += f"{_indent}Resize(min_size={self.min_size}, max_size={self.max_size}, mode='bilinear')"
         format_string += "\n)"
         return format_string
-
-

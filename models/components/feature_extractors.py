@@ -10,10 +10,6 @@ import torch
 
 from models.components.general import Conv2dBNReLu, Deconv2dBNReLu, map_inputs
 
-
-
-
-
 class SpatialisationBlock(nn.Module):
     def __init__(
         self,
@@ -71,15 +67,8 @@ class ImageFeatureExtractor(GeneralFeatureExtractor):
         self.backbone = backbone
 
     def forward(self, x):
-        '''
-        {
-            image_list:
-        }
-        '''
+        return self.backbone(x['images'])
 
-
-        x = map_inputs(inputs=x, mapper=self.input_name_mapper)
-        return self.backbone(x["image_list"].tensors)
 
 class TabularFeatureExtractor(GeneralFeatureExtractor):
     """
@@ -146,9 +135,10 @@ class TabularFeatureExtractor(GeneralFeatureExtractor):
         return output
 
 
-class SequentialFeatureExtractor(GeneralFeatureExtractor):
-    def __init__(self,) -> None:
+class SequentialFeatureExtractor(GeenralFeatureExtractor):
+    def __init__(self, encoder_type="", **kwargs) -> None:
         super().__init__("extractor-sequential")
+        if encoder_type == "transformer":
+            encoder_layer = nn.TransformerEncoderLayer(d_model=512, nhead=8)
+            transformer_encoder = nn.TransformerEncoder(encoder_layer, num_layers=6)
 
-    def forward(self, x):
-        pass

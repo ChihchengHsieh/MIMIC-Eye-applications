@@ -32,14 +32,19 @@ class ExtractFusePerform(nn.Module):
         # extract feature maps # doesn't allow the feature extractors created but not used.
 
         feature_maps = OrderedDict(
-            {k: self.feature_extractors[k](x) for k in self.feature_extractors.keys()}
+            {k: self.feature_extractors[k](x[k]) for k in self.feature_extractors.keys()}
         )
-
+      
+      
+        # k is the task name or extractor name.
+         
         fused = self.fusor(feature_maps)
+        #fused is a dict: {"z": feature maps}
+
 
         outputs = OrderedDict(
             {
-                k: self.task_performers[k](x, fused, targets)
+                k: self.task_performers[k](fused, targets[k])
                 for k in self.task_performers.keys()
             }
         )
@@ -65,9 +70,10 @@ class ExtractFusePerform(nn.Module):
     #                     )
 
     def prepare(self, x, targets):
+
         if "lesion-detection" in self.task_performers.keys():
             x, targets = self.lesion_detetion_prepare(x, targets)
-
+            
         return x, targets
 
     def lesion_detetion_prepare(self, x, targets):
@@ -76,38 +82,19 @@ class ExtractFusePerform(nn.Module):
             val = img.shape[-2:]
             assert len(val) == 2
             original_image_sizes.append((val[0], val[1]))
-
-        x["xrays_original_image_sizes"] = original_image_sizes
-
+        
+        # instead of putting these in the input x, we put it in the target of the object-detection.
+        
         # need to check how to involve fixations here.
-        x["xray_list"], tramsformed_targets = self.task_performers[
-            "lesion-detection"
-        ].transform(
-            x["xrays"],
-            map_labels(
-                targets,
-                self.task_performers["lesion-detection"].params.label_name_mapper,
-            ),
-        )
+        image_list, targets = self.task_performers['object-detection'].transform(x["images"], targets)
+        
+        self.task_performers['object-detection'].valid_bbox(targets)
 
-        reversed_targets = map_labels(
-            targets=tramsformed_targets,
-            mapper={
-                v: k
-                for k, v in self.task_performers[
-                    "lesion-detection"
-                ].params.label_name_mapper.items()
-            },
-        )
+        x['images']  =  image_list.tensors
 
-        for k, v in reversed_targets.items():
-            targets[k] = v
-
-
-        self.task_performers["lesion-detection"].valid_bbox(targets)
-
-        # see if it's okay just keep the image list
-        del x["xrays"]
+        targets["original_image_sizes"] = original_image_sizes
+        targets['image_list_image_sizes'] = image_list.image_sizes
+        targets['image_list_tensors_shape'] = image_list.tensors.shape
 
         return x, targets
 
