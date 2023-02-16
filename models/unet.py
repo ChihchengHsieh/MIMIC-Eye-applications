@@ -1,19 +1,7 @@
 import torch.nn as nn
 import torch.nn.functional as F
 
-
-class Conv2dBNReLu(nn.Module):
-    def __init__(self, in_channels, out_channels,  kernel_size=3, padding=1) -> None:
-        super().__init__()
-
-        self.model = nn.Sequential(
-            nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1),
-            nn.BatchNorm2d(out_channels),
-            nn.ReLU(),
-        )
-
-    def forward(self, x):
-        return self.model(x)
+from models.components.general import Conv2dBNReLu
 
 
 class DecoderBlock(nn.Module):

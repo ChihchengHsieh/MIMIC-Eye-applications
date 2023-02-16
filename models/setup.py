@@ -14,19 +14,22 @@ class ModelSetup:
     # name of the model.
     name: str = None
 
-    sources: List[str] = field(default_factory=lambda: ["image"])
+    sources: List[str] = field(default_factory=lambda: ["chest x-ray", "clinical"])
     tasks: List[Dict] = field(
         default_factory=lambda: [
-            {"lesion-detection": {}}, {"fixation-generation": {
-                
-            }}]
+            "lesion-detection",
+            "fixation-generation",
+            "chexpert-classification",
+            "negbio-classification",
+        ]
     )
 
-    # heatmap generation
-    decoder_channels: List[int] = field(
-        default_factory=lambda: [64, 32, 16, 8, 1])
+    fusor: str = "element-wise sum"
 
-    label_cols: List[str] = field(
+    # heatmap generation
+    decoder_channels: List[int] = field(default_factory=lambda: [64, 32, 16, 8, 1])
+
+    lesion_label_cols: List[str] = field(
         default_factory=lambda: [
             # "Fibrosis",
             # "Quality issue",
@@ -101,8 +104,7 @@ class ModelSetup:
     reduceLROnPlateau_patience: int = 3
     reduceLROnPlateau_full_stop: bool = False
 
-    multiStepLR_milestones: List[int] = field(
-        default_factory=lambda: [30, 50, 70, 90])
+    multiStepLR_milestones: List[int] = field(default_factory=lambda: [30, 50, 70, 90])
     multiStepLR_gamma: float = 0.1
 
     # For warming up the training, but found not useful in our case.
@@ -138,3 +140,69 @@ class ModelSetup:
     iou_thrs: np.array = field(default_factory=lambda: np.array([0.5]))
 
     fiaxtions_mode: str = "normal"  # [normal, reporting, silent]
+
+    clinical_num: List[str] = field(
+        default_factory=lambda: [
+            "age",
+            "temperature",
+            "heartrate",
+            "resprate",
+            "o2sat",
+            "sbp",
+            "dbp",
+            "pain",
+            "acuity",
+        ]
+    )
+
+    clinical_cat: List[str] = field(default_factory=lambda: ["gender"])
+    categorical_col_maps: dict[str, int] = field(
+        default_factory=lambda: {"gender": 2,}
+    )
+
+    clinical_cat_emb_dim: int = 32
+    clinical_conv_channels: int = 32
+    clinical_upsample: str = "deconv"
+
+    chexpert_label_cols: List[str] = field(
+        default_factory=lambda: [
+            "subject_id_chexpert",
+            "study_id_chexpert",
+            "Atelectasis_chexpert",
+            "Cardiomegaly_chexpert",
+            "Consolidation_chexpert",
+            "Edema_chexpert",
+            "Enlarged Cardiomediastinum_chexpert",
+            "Fracture_chexpert",
+            "Lung Lesion_chexpert",
+            "Lung Opacity_chexpert",
+            "No Finding_chexpert",
+            "Pleural Effusion_chexpert",
+            "Pleural Other_chexpert",
+            "Pneumonia_chexpert",
+            "Pneumothorax_chexpert",
+            "Support Devices_chexpert",
+        ]
+    )
+
+    negbio_label_cols: List[str] = field(
+        default_factory=lambda: [
+            "subject_id_negbio",
+            "study_id_negbio",
+            "Atelectasis_negbio",
+            "Cardiomegaly_negbio",
+            "Consolidation_negbio",
+            "Edema_negbio",
+            "Enlarged Cardiomediastinum_negbio",
+            "Fracture_negbio",
+            "Lung Lesion_negbio",
+            "Lung Opacity_negbio",
+            "No Finding_negbio",
+            "Pleural Effusion_negbio",
+            "Pleural Other_negbio",
+            "Pneumonia_negbio",
+            "Pneumothorax_negbio",
+            "Support Devices_negbio",
+        ]
+    )
+

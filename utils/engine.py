@@ -1,6 +1,7 @@
 import math, sys, time, torch, torchvision
 from typing import Dict, List, Tuple
 import torch.nn as nn
+from models.frameworks import ExtractFusePerform
 
 from models.setup import ModelSetup
 
@@ -30,7 +31,7 @@ def get_iou_types(model: nn.Module, setup: ModelSetup) -> List[str]:
 
 def train_one_epoch(
     setup: ModelSetup,
-    model: nn.Module,
+    model: ExtractFusePerform,
     optimizer: Optimizer,
     data_loader: DataLoader,
     device: str,
@@ -78,7 +79,7 @@ def train_one_epoch(
             all_losses = {}
             for task in outputs.keys():
                 all_losses.update(
-                    {f"{task}_{k}": v for k, v in outputs[task]["losses"].items()}
+                    {f"{task}_{model.task_performers[task].name}_{k}": v for k, v in outputs[task]["losses"].items()}
                 )
 
             if dynamic_loss_weight:
