@@ -17,7 +17,7 @@ from torchvision.models.detection.faster_rcnn import (
 
 from torchvision.models.detection.transform import resize_boxes, resize_keypoints
 from torchvision.models.detection.roi_heads import paste_masks_in_image
-from models.components.general import Activation
+from models.components.general import Activation, map_inputs, map_labels
 
 from models.unet import UNetDecoder
 from .rcnn import (
@@ -27,22 +27,11 @@ from .rcnn import (
     XAMITwoMLPHead,
 )
 
-
-class LabelNameWrapper(nn.Module):
-    def __init__(self, mapper, performer) -> None:
-        super().__init__()
-        self.mapper: dict = mapper
-        self.performer = performer
-
-    def forward(self, x, z, targets):
-        mapped_targets = {v: targets[k] for k, v in self.mapper.items()}
-        return self.performer(x, z, mapped_targets)
-
-
 class GeneralTaskPerformer(nn.Module):
-    def __init__(self, name: str, loses: List[str]) -> None:
+    def __init__(self, name: str, loses: List[str], label_name_mapper=None) -> None:
         self.name = name
         self.loses = loses
+        self.label_name_mapper = label_name_mapper
         super().__init__()
 
     def forward(self, fused, targets):
@@ -55,8 +44,10 @@ class GeneralTaskPerformer(nn.Module):
 
 
 class ObjectDetectionParameters(object):
-    def __init__(self, label_name_mapper, image_size=512) -> None:
-        self.image_size = image_size
+    def __init__(
+        self, task_name, input_name_mapper, label_name_mapper, out_channels, num_classes, image_size,
+    ) -> None:
+
         # rpn params
         self.rpn_pre_nms_top_n_train = 2000
         self.rpn_pre_nms_top_n_test = 1000
@@ -100,13 +91,15 @@ class ObjectDetectionParameters(object):
         self.transform_min_size = (800,)
         self.transform_max_size = 1333
 
-        self.label_name_mapper = label_name_mapper
+        self.task_name = task_name
+        self.out_channels = out_channels
+        self.num_classes = num_classes
+
+        self.image_size = image_size
 
 
 class ObjectDetectionPerformer(GeneralTaskPerformer):
-    def __init__(
-        self, params: ObjectDetectionParameters, out_channels, num_classes
-    ) -> None:
+    def __init__(self, params: ObjectDetectionParameters,) -> None:
         super().__init__(
             name="performer-object_detection",
             loses=[
@@ -118,8 +111,6 @@ class ObjectDetectionPerformer(GeneralTaskPerformer):
             ],
         )
 
-        self.out_channels = out_channels
-        self.num_classes = num_classes
         self.params = params
 
         self.__init_rpn(self.params)
@@ -171,8 +162,7 @@ class ObjectDetectionPerformer(GeneralTaskPerformer):
         )
 
         rpn_head = RPNHead(
-            self.out_channels, rpn_anchor_generator.num_anchors_per_location()[
-                0]
+            self.params.out_channels, rpn_anchor_generator.num_anchors_per_location()[0]
         )
 
         rpn_pre_nms_top_n = dict(
@@ -210,13 +200,13 @@ class ObjectDetectionPerformer(GeneralTaskPerformer):
 
         resolution = box_roi_pool.output_size[0]
         box_head = XAMITwoMLPHead(
-            self.out_channels * resolution ** 2,
+            self.params.out_channels * resolution ** 2,
             params.XAMITwoMLPHead_representation_size,
             dropout_rate=params.XAMITwoMLPHead_dropout_rate,
         )
 
         box_predictor = FastRCNNPredictor(
-            params.XAMITwoMLPHead_representation_size, self.num_classes
+            params.XAMITwoMLPHead_representation_size, self.params.num_classes
         )
 
         self.roi_heads = XAMIRoIHeads(
@@ -265,15 +255,17 @@ class ObjectDetectionPerformer(GeneralTaskPerformer):
                     )
 
 
-class HeatmapGeneratorParameters(object):
-    def __init__(self, input_channel, decoder_channels) -> None:
+class HeatmapGenerationParameters(object):
+    def __init__(
+        self, task_name, label_name_mapper, input_channel, decoder_channels
+    ) -> None:
         super().__init__()
-
+        self.task_name = task_name
+        self.label_name_mapper = label_name_mapper
         self.input_channel = input_channel
         self.decoder_channels = decoder_channels
 
-
-class HeatmapGenerator(GeneralTaskPerformer):
+class HeatmapGenerationPerformer(GeneralTaskPerformer):
 
     """
     Expecting targets -> {
@@ -281,10 +273,12 @@ class HeatmapGenerator(GeneralTaskPerformer):
     }
     """
 
-    def __init__(self, params: HeatmapGeneratorParameters) -> None:
-        super().__init__(name="performer-heatmap_generator",
-                         loses=["heatmap_loss"])
-        self.model = UNetDecoder(params.input_channel, params.decoder_channels)
+    def __init__(self, params: HeatmapGenerationParameters) -> None:
+        super().__init__(name="performer-heatmap_generator", loses=["heatmap_loss"])
+        self.params = params
+        self.model = UNetDecoder(
+            self.params.input_channel, self.params.decoder_channels
+        )
         self.loss_fn = nn.BCEWithLogitsLoss()
 
     def forward(self, fused, targets):
@@ -293,8 +287,7 @@ class HeatmapGenerator(GeneralTaskPerformer):
         output = self.model(z)
 
         loss = self.loss_fn(
-            output, torch.stack([t["fixations"]
-                                for t in targets], dim=0).float()
+            output, torch.stack([t["heatmaps"] for t in targets], dim=0).float()
         )
 
         return {
@@ -304,8 +297,19 @@ class HeatmapGenerator(GeneralTaskPerformer):
 
 
 class ImageClassificationParameters(object):
-    def __init__(self, input_channel, num_classes, pool="avg", dropout=0.2, activation=None) -> None:
+    def __init__(
+        self,
+        task_name,
+        label_name_mapper,
+        input_channel,
+        num_classes,
+        pool="avg",
+        dropout=0.2,
+        activation=None,
+    ) -> None:
         super().__init__()
+        self.task_name = task_name
+        self.label_name_mapper = label_name_mapper
         self.input_channel = input_channel
         self.num_classes = num_classes
         self.pool = pool
@@ -322,40 +326,41 @@ class ImageClassificationPerformer(GeneralTaskPerformer):
     """
 
     def __init__(self, params: ImageClassificationParameters) -> None:
-        super().__init__(name="performer-image_classfication",
-                         loses=["classification_loss"])
+        self.params = params
+
+        super().__init__(
+            name="performer-image_classfication", loses=["classification_loss"]
+        )
 
         if params.pool not in ("max", "avg"):
             raise ValueError(
-                "Pooling should be one of ('max', 'avg'), got {}.".format(params.pool))
-        pool = nn.AdaptiveAvgPool2d(
-            1) if params == "avg" else nn.AdaptiveMaxPool2d(1)
-        flatten = nn.Flatten()
-        dropout = nn.Dropout(
-            p=params.dropout, inplace=True) if params.dropout else nn.Identity()
-        linear = nn.Linear(params.input_channel, params.num_classes, bias=True)
-        activation = Activation(params.activation)
+                "Pooling should be one of ('max', 'avg'), got {}.".format(params.pool)
+            )
 
         self.model = nn.Sequential(
-            pool,
-            flatten,
-            dropout,
-            linear,
-            activation,
+            nn.AdaptiveAvgPool2d(1) if params == "avg" else nn.AdaptiveMaxPool2d(1),
+            nn.Flatten(),
+            nn.Dropout(p=params.dropout, inplace=True)
+            if params.dropout
+            else nn.Identity(),
+            nn.Linear(params.input_channel, params.num_classes, bias=True),
+            Activation(params.activation),
         )
 
         self.loss_fn = nn.BCEWithLogitsLoss()
 
     def forward(self, fused, targets):
         z = fused["z"]
+        
         output = self.model(z)
 
         loss = self.loss_fn(
-            output, torch.stack([t["classifications"]
-                                for t in targets], dim=0).float()
+            output, torch.stack([t["classifications"] for t in targets], dim=0).float()
         )
 
         return {
             "losses": {"classification_loss": loss},
             "outputs": output,
         }
+
+

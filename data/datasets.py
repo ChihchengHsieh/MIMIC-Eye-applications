@@ -64,6 +64,7 @@ class ReflacxDataset(data.Dataset):
         with_bboxes: bool = True,
         with_fixations: bool = True,
         fiaxtions_mode='normal',  # [silent, reporting, all]
+
     ):
         # Data loading selections
 
@@ -80,10 +81,12 @@ class ReflacxDataset(data.Dataset):
         self.box_fix_cols: List[str] = box_fix_cols
         self.box_coord_cols: List[str] = box_coord_cols
         self.dataset_mode: str = dataset_mode
+        self.with_clinical = with_clincal
         self.with_fixations: bool = with_fixations
-        self.df_path = "reflacx_eye.csv"
         self.fiaxtions_mode = fiaxtions_mode
         self.with_bboxes = with_bboxes
+
+        self.df_path = "reflacx_clinical_eye.csv" if self.with_clinical else "reflacx_eye.csv"
 
         # load dataframe
         self.df: pd.DataFrame = pd.read_csv(
@@ -122,6 +125,9 @@ class ReflacxDataset(data.Dataset):
         # preprocessing data.
         self.preprocess_label()
 
+        self.chexpert_label_cols = [c for c in self.df.columns if c.endswith("_chexpert")]
+        self.negbio_label_cols =  [c for c in self.df.columns if c.endswith("_negbio")]
+
         super().__init__()
 
     def preprocess_label(self,):
@@ -133,6 +139,18 @@ class ReflacxDataset(data.Dataset):
     def plot_image_from_array(self, image_array: np.ndarray):
         im = Image.fromarray(image_array)
         im.show()
+
+    def negbio_chexpert_disease_to_idx(disease, label_cols):
+        if not disease in label_cols:
+            raise Exception("This disease is not the label.")
+
+        return label_cols.index(disease)
+
+    def negbio_chexpert_idx_to_disease(idx, label_cols):
+        if idx >= len(label_cols):
+            return f"exceed label range :{idx}"
+
+        return label_cols[idx]
 
     def disease_to_idx(self, disease: str) -> int:
         if not disease in self.labels_cols:
@@ -268,14 +286,10 @@ class ReflacxDataset(data.Dataset):
                     "image_path": data['image_path']
                 }
             }
+            
+            target['chexpert_classifications'] = {"classifications": torch.tensor(data[self.chexpert_label_cols])}
+            target['negbio_classifications'] = {"classifications": torch.tensor(data[self.negbio_label_cols])}
 
-            target["boxes"] = bboxes
-            target["labels"] = labels
-            target["image_id"] = image_id
-            target["area"] = area
-            target["iscrowd"] = iscrowd
-            target["dicom_id"] = data["dicom_id"]
-            target["image_path"] = data["image_path"]
 
         if self.with_fixations:
             # get fixations
@@ -325,13 +339,14 @@ class ReflacxDataset(data.Dataset):
 
         targets = [target_processing(t) for t in targets]
 
-        return {"images": images}, targets
+        return {"xrays": images}, targets
 
     def get_idxs_from_dicom_id(self, dicom_id: str) -> List[str]:
         return [
             self.df.index.get_loc(i)
             for i in self.df.index[self.df["dicom_id"].eq(dicom_id)]
         ]
+
 
     def get_image_path_from_dicom_id(self, dicom_id: str) -> List[str]:
         return self.df[self.df["dicom_id"] == dicom_id].iloc[0]["image_path"]

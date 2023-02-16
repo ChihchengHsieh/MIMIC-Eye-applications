@@ -34,9 +34,9 @@ class RandomHorizontalFlip(object):
         if random.random() < self.prob:
             _, width = image.shape[-2:]
             image = image.flip(-1)
-            bbox = target["boxes"]
+            bbox = target["lesion_boxes"]
             bbox[:, [0, 2]] = width - bbox[:, [2, 0]]
-            target["boxes"] = bbox
+            target["lesion_boxes"] = bbox
             if "masks" in target:
                 target["masks"] = target["masks"].flip(-1)
             if "keypoints" in target:
@@ -55,9 +55,9 @@ class HorizontalFlipTransform(object):
         if random.random() < self.prob:
             _, width = image.shape[-2:]
             image = image.flip(-1)
-            bbox = target["boxes"]
+            bbox = target["lesion_boxes"]
             bbox[:, [0, 2]] = width - bbox[:, [2, 0]]
-            target["boxes"] = bbox
+            target["lesion_boxes"] = bbox
             if "masks" in target:
                 target["masks"] = target["masks"].flip(-1)
 

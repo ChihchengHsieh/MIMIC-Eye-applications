@@ -7,8 +7,8 @@ from typing import Union
 Data Paths
 '''
 
-MIMIC_EYE_PATH = "/Users/jrhs/Desktop/mimic-eye"
-# MIMIC_EYE_PATH = "D:\mimic-eye"
+# MIMIC_EYE_PATH = "/Users/jrhs/Desktop/mimic-eye"
+MIMIC_EYE_PATH = "D:\mimic-eye"
 PHYSIO_PATH = "E:\physionet.org"
 SPREADSHEET_FOLDER = "spreadsheets"
 
@@ -29,13 +29,13 @@ class ReflacxFiles(Enum):
     TimestampsTranscription = "timestamps_transcription.csv"
     Transcription = "transcription.txt"
 
-class ReflacxReader( ):
-
+class ReflacxReader():
+    
     def __init__(self, files_path: str, version="1.0.0") -> None:
+
         self.version = version
         self.folder_name = "reflacx-xray-localization"
         self.folder_path = os.path.join(files_path, self.folder_name, self.version)
-
 
         '''
         Each file name here
