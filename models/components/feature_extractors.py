@@ -17,11 +17,21 @@ class ImageFeatureExtractor(GeenralFeatureExtractor):
         self.backbone = backbone
 
     def forward(self, x):
-        return self.backbone(x['image_list'].tensors)
+        return self.backbone(x['images'])
 
 class ClinicalFeatureExtractor(GeenralFeatureExtractor):
     def __init__(self) -> None:
-        super().__init__("extractor-clinical")
+        super().__init__("extractor-tabular")
 
     def forward(self, x):
         pass
+
+
+class SequentialFeatureExtractor(GeenralFeatureExtractor):
+    def __init__(self, encoder_type="", **kwargs) -> None:
+        super().__init__("extractor-sequential")
+        if encoder_type == "transformer":
+            encoder_layer = nn.TransformerEncoderLayer(d_model=512, nhead=8)
+            transformer_encoder = nn.TransformerEncoder(encoder_layer, num_layers=6)
+
+    

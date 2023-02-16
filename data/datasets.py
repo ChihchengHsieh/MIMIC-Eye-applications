@@ -36,6 +36,7 @@ from .fixation import get_fixations_dict_from_fixation_df, get_heatmap
 def collate_fn(batch: Tuple) -> Tuple:
     return tuple(zip(*batch))
 
+
 class ReflacxDataset(data.Dataset):
     """
     Class to load the preprocessed REFLACX master sheet. There `.csv` files are required to run this class.
@@ -60,8 +61,9 @@ class ReflacxDataset(data.Dataset):
         box_coord_cols: List[str] = DEFAULT_REFLACX_BOX_COORD_COLS,
         path_cols: List[str] = DEFAULT_REFLACX_PATH_COLS,
         spreadsheets_folder=SPREADSHEET_FOLDER,
+        with_bboxes: bool = True,
         with_fixations: bool = True,
-        fiaxtions_mode = 'normal', # [silent, reporting, all]
+        fiaxtions_mode='normal',  # [silent, reporting, all]
     ):
         # Data loading selections
 
@@ -81,6 +83,7 @@ class ReflacxDataset(data.Dataset):
         self.with_fixations: bool = with_fixations
         self.df_path = "reflacx_eye.csv"
         self.fiaxtions_mode = fiaxtions_mode
+        self.with_bboxes = with_bboxes
 
         # load dataframe
         self.df: pd.DataFrame = pd.read_csv(
@@ -223,54 +226,72 @@ class ReflacxDataset(data.Dataset):
         # convert images to rgb
         img: Image = Image.open(data["image_path"]).convert("RGB")
 
-        # Get bounding boxes.
-        bboxes_df = self.generate_bboxes_df(
-            pd.read_csv(data["bbox_path"])
-        )
+        if self.with_bboxes:
 
-        self.bboxes_df = bboxes_df
+            # Get bounding boxes.
+            bboxes_df = self.generate_bboxes_df(
+                pd.read_csv(data["bbox_path"])
+            )
 
-        bboxes = torch.tensor(
-            np.array(bboxes_df[self.box_coord_cols], dtype=float)
-        )  # x1, y1, x2, y2
+            self.bboxes_df = bboxes_df
 
-        # Calculate area of boxes.
-        area = (bboxes[:, 3] - bboxes[:, 1]) * (bboxes[:, 2] - bboxes[:, 0])
+            bboxes = torch.tensor(
+                np.array(bboxes_df[self.box_coord_cols], dtype=float)
+            )  # x1, y1, x2, y2
 
-        labels = torch.tensor(
-            np.array(bboxes_df["label"].apply(
-                lambda l: self.disease_to_idx(l))).astype(int),
-            dtype=torch.int64,
-        )
+            # Calculate area of boxes.
+            area = (bboxes[:, 3] - bboxes[:, 1]) * \
+                (bboxes[:, 2] - bboxes[:, 0])
 
-        image_id = torch.tensor([idx])
-        num_objs = bboxes.shape[0]
+            labels = torch.tensor(
+                np.array(bboxes_df["label"].apply(
+                    lambda l: self.disease_to_idx(l))).astype(int),
+                dtype=torch.int64,
+            )
 
-        #S suppose all instances are not crowd
-        iscrowd = torch.zeros((num_objs,), dtype=torch.int64)
+            image_id = torch.tensor([idx])
+            num_objs = bboxes.shape[0]
 
-        # prepare all targets
-        target = {}
-        target["lesion_boxes"] = bboxes
-        target["lesion_labels"] = labels
-        target["image_id"] = image_id
-        target["lesion_area"] = area
-        target["lesion_iscrowd"] = iscrowd
-        target["dicom_id"] = data["dicom_id"]
-        target["image_path"] = data["image_path"]
+            # S suppose all instances are not crowd
+            iscrowd = torch.zeros((num_objs,), dtype=torch.int64)
+
+            # prepare lesion-detection targets
+
+            target = {
+                "lesion-detection": {
+                    "boxes": bboxes,
+                    "labels": labels,
+                    "image_id": image_id,
+                    "area": area,
+                    "iscrowd": iscrowd,
+                    "dicom_id": data['dicom_id'],
+                    "image_path": data['image_path']
+                }
+            }
+
+            target["boxes"] = bboxes
+            target["labels"] = labels
+            target["image_id"] = image_id
+            target["area"] = area
+            target["iscrowd"] = iscrowd
+            target["dicom_id"] = data["dicom_id"]
+            target["image_path"] = data["image_path"]
 
         if self.with_fixations:
             # get fixations
             target["fixation_path"] = data["fixation_path"]
             fiaxtion_df = pd.read_csv(data["fixation_path"])
             if self.fiaxtions_mode != "normal":
-                utterance_path = os.path.join(os.path.dirname(data["fixation_path"]), "timestamps_transcription.csv")
+                utterance_path = os.path.join(os.path.dirname(
+                    data["fixation_path"]), "timestamps_transcription.csv")
                 utterance_df = pd.read_csv(utterance_path)
                 report_starting_time = utterance_df.iloc[0]['timestamp_start_word']
                 if self.fiaxtions_mode == "reporting":
-                    fiaxtion_df[fiaxtion_df['timestamp_start_fixation'] >= report_starting_time]
+                    fiaxtion_df[fiaxtion_df['timestamp_start_fixation']
+                                >= report_starting_time]
                 elif self.fiaxtions_mode == "silent":
-                    fiaxtion_df[fiaxtion_df['timestamp_start_fixation'] < report_starting_time]
+                    fiaxtion_df[fiaxtion_df['timestamp_start_fixation']
+                                < report_starting_time]
                 else:
                     raise ValueError("Not supported fiaxtions mode.")
 
@@ -278,13 +299,14 @@ class ReflacxDataset(data.Dataset):
                 get_fixations_dict_from_fixation_df(fiaxtion_df),
                 (data["image_size_x"], data["image_size_y"]),
             ).astype(np.float32)
-            target['fixations'] = fix
+            
+            target['fixation-generation'] = {'fixations':  fix}
             # img_t, target, fix_t = self.transforms(img, target, fix)
-            # target["fixations"] = fix_t 
+            # target["fixations"] = fix_t
         # else:
-        
+
         img_t, target = self.transforms(img, target)
-        
+
         return {"image": img_t}, target
 
     def prepare_input_from_data(
@@ -298,7 +320,7 @@ class ReflacxDataset(data.Dataset):
         Tuple[torch.Tensor, Dict],
     ]:
         inputs, targets = data
-        
+
         images = [t["image"] for t in inputs]
 
         targets = [target_processing(t) for t in targets]

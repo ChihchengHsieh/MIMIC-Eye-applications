@@ -24,11 +24,15 @@ class ExtractFusePerform(nn.Module):
 
         # extract feature maps # doesn't allow the feature extractors created but not used.
 
-        feature_maps = { k: self.feature_extractors[k](x) for k in self.feature_extractors.keys()}
+        # follow this pattern.
+
+        
+        feature_maps = { k: self.feature_extractors[k](x[k]) for k in self.feature_extractors.keys()}
 
         fused = self.fusor(feature_maps)
+        #fused is a dict: {"z": feature maps}
 
-        outputs = { k: self.task_performers[k](x, fused, targets) for k in self.task_performers.keys()}
+        outputs = { k: self.task_performers[k](fused, targets[k]) for k in self.task_performers.keys()}
 
         return outputs
 
@@ -52,7 +56,7 @@ class ExtractFusePerform(nn.Module):
 
     def prepare(self, x, targets):
         if "object-detection" in self.task_performers.keys():
-            x, targets = self.object_detetion_prepare(x, targets)
+            x['xrays'], targets['lesion-detection'] = self.object_detetion_prepare(x['xrays'], targets['lesion-detection'])
 
         return x, targets
 
@@ -63,14 +67,18 @@ class ExtractFusePerform(nn.Module):
             assert len(val) == 2
             original_image_sizes.append((val[0], val[1]))
         
-        x["original_image_sizes"] = original_image_sizes
+        # instead of putting these in the input x, we put it in the target of the object-detection.
         
         # need to check how to involve fixations here.
-        x['image_list'], targets = self.task_performers['object-detection'].transform(x["images"], targets)
+        image_list, targets = self.task_performers['object-detection'].transform(x["images"], targets)
+        
         self.task_performers['object-detection'].valid_bbox(targets)
 
-        # see if it's okay just keep the image list
-        del x['images'] 
+        x['images']  =  image_list.tensors
+
+        targets["original_image_sizes"] = original_image_sizes
+        targets['image_list_image_sizes'] = image_list.image_sizes
+        targets['image_list_tensors_shape'] = image_list.tensors.shape
 
         return x, targets
 
