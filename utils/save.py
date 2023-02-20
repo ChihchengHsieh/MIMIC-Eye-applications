@@ -161,7 +161,7 @@ def check_best(
                 iou_types=iou_types,
                 score_thres=score_thres,
             )
-            test_ap_ar = get_ap_ar(train_info.test_evaluator)
+            test_ap_ar = get_ap_ar(train_info.test_evaluator['lesion-detection'])
 
         if val_ar > train_info.best_val_ar:
             ## Save best validation model
@@ -242,7 +242,7 @@ def end_train(
         score_thres=score_thres,
     )
 
-    test_ap_ar = get_ap_ar(train_info.test_evaluator)
+    test_ap_ar = get_ap_ar(train_info.test_evaluator['lesion-detection'])
 
     train_info = save_checkpoint(
         train_info=train_info,

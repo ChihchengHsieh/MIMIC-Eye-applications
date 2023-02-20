@@ -12,33 +12,30 @@ from .frameworks import *
 def create_model_from_setup(setup: ModelSetup):
     feature_extractors = nn.ModuleDict()
 
-    xray_input_mapper = {
-        "xrays": "images",
-        "xrays_original_image_sizes": "original_image_sizes",
-        "xray_list": "image_list",
-    }
+    feature_map_dim = None
 
-    if "chest x-ray" in setup.sources:
+    xrays_extractor_name = "xrays"
+    if xrays_extractor_name in setup.sources:
         backbone = get_normal_backbone(setup)
         image_extractor = ImageFeatureExtractor(
-            input_name_mapper=xray_input_mapper, backbone=backbone,
+            source_name=xrays_extractor_name, backbone=backbone,
         )
-        feature_extractors.update({"chest x-ray": image_extractor})
+        feature_extractors.update({xrays_extractor_name: image_extractor})
+        feature_map_dim = [backbone.out_channels, backbone.out_dim, backbone.out_dim]
 
-    if "clinical" in setup.sources:
-        TabularFeatureExtractor(
-            input_name_mapper={
-                "clinical_cat": "tabular_cat",
-                "clinical_num": "tabular_num",
-            },
+    clinical_extractor_name = "clinical"
+    if clinical_extractor_name in setup.sources:
+        clnical_extractor = TabularFeatureExtractor(
+            source_name=clinical_extractor_name,
             all_cols=setup.clinical_cat + setup.clinical_num,
             categorical_col_maps=setup.categorical_col_maps,
             embedding_dim=setup.clinical_cat_emb_dim,
-            image_size=setup.image_size,
+            out_dim=feature_map_dim[-1],
             conv_channels=setup.clinical_conv_channels,
             out_channels=setup.backbone_out_channels,
             upsample=setup.clinical_upsample,
         )
+        feature_extractors.update({clinical_extractor_name: clnical_extractor})
 
     if setup.fusor == "no-action":
         fusor = NoActionFusor(out_channel=setup.backbone_out_channels)
@@ -58,13 +55,6 @@ def create_model_from_setup(setup: ModelSetup):
     if lesion_detection_task_name in setup.tasks:
         lesion_params = ObjectDetectionParameters(
             task_name=lesion_detection_task_name,
-            input_name_mapper=xray_input_mapper,
-            label_name_mapper={
-                "lesion_boxes": "boxes",
-                "lesion_labels": "labels",
-                "lesion_image_id": "image_id",
-                "lesion_iscrowd": "iscrowd",
-            },
             out_channels=image_extractor.backbone.out_channels,
             num_classes=len(setup.lesion_label_cols) + 1,
             image_size=setup.image_size,
@@ -76,7 +66,6 @@ def create_model_from_setup(setup: ModelSetup):
     if fixation_generation_task_name in setup.tasks:
         fix_params = HeatmapGenerationParameters(
             task_name=fixation_generation_task_name,
-            label_name_mapper={"fixations": "heatmaps"},
             input_channel=backbone.out_channels,
             decoder_channels=setup.decoder_channels,
         )  # the output should be just one channel.
@@ -87,7 +76,6 @@ def create_model_from_setup(setup: ModelSetup):
     if chexpert_classification_task_name in setup.tasks:
         chexpert_clf_params = ImageClassificationParameters(
             task_name=chexpert_classification_task_name,
-            label_name_mapper={"chexpert_classifications": "classifications"},
             input_channel=fusor.out_channel,
             num_classes=len(setup.chexpert_label_cols),
         )
@@ -98,7 +86,6 @@ def create_model_from_setup(setup: ModelSetup):
     if negbio_classification_task_name in setup.tasks:
         negbio_clf_params = ImageClassificationParameters(
             task_name=negbio_classification_task_name,
-            label_name_mapper={"negbio_classifications": "classifications"},
             input_channel=fusor.out_channel,
             num_classes=len(setup.negbio_label_cols),
         )

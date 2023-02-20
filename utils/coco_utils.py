@@ -12,10 +12,16 @@ from pycocotools.coco import COCO
 import data.transforms as T
 
 
-def get_cocos(train_dataloader, val_dataloader, test_dataloader):
-    train_coco = get_coco_api_from_dataset(train_dataloader.dataset)
-    val_coco = get_coco_api_from_dataset(val_dataloader.dataset)
-    test_coco = get_coco_api_from_dataset(test_dataloader.dataset)
+def get_lesion_detection_cocos(train_dataloader, val_dataloader, test_dataloader):
+    train_coco = get_coco_api_from_dataset(
+        train_dataloader.dataset, source_name="xrays", task_name="lesion-detection"
+    )
+    val_coco = get_coco_api_from_dataset(
+        val_dataloader.dataset, source_name="xrays", task_name="lesion-detection"
+    )
+    test_coco = get_coco_api_from_dataset(
+        test_dataloader.dataset, source_name="xrays", task_name="lesion-detection"
+    )
     return train_coco, val_coco, test_coco
 
 
@@ -63,7 +69,7 @@ class ConvertCocoPolysToMask(object):
 
         anno = target["annotations"]
 
-        anno = [obj for obj in anno if obj['iscrowd'] == 0]
+        anno = [obj for obj in anno if obj["iscrowd"] == 0]
 
         boxes = [obj["bbox"] for obj in anno]
         # guard against no boxes via resizing
@@ -150,66 +156,63 @@ def _coco_remove_images_without_annotations(dataset, cat_list=None):
     return dataset
 
 
-    
-
-
-def convert_to_coco_api(ds):
+def convert_to_coco_api(ds, source_name, task_name):
     coco_ds = COCO()
     # annotation IDs need to start at 1, not 0, see torchvision issue #1530
     ann_id = 1
-    dataset = {'images': [], 'categories': [], 'annotations': []}
+    dataset = {"images": [], "categories": [], "annotations": []}
     categories = set()
     for img_idx in range(len(ds)):
         # find better way to get target
         # targets = ds.get_annotations(img_idx)
         # img, clinical_num, clinical_cat, targets = ds[img_idx]
-        data= ds[img_idx]
-        img = data[0]['image']
-        targets = data[-1]
+        data = ds[img_idx]
+        img = data[0][source_name]["images"]
+        targets = data[-1][task_name]
 
         image_id = targets["image_id"].item()
         img_dict = {}
-        img_dict['id'] = image_id
-        img_dict['height'] = img.shape[-2]
-        img_dict['width'] = img.shape[-1]
-        dataset['images'].append(img_dict)
+        img_dict["id"] = image_id
+        img_dict["height"] = img.shape[-2]
+        img_dict["width"] = img.shape[-1]
+        dataset["images"].append(img_dict)
         bboxes = targets["boxes"]
         bboxes[:, 2:] -= bboxes[:, :2]
         bboxes = bboxes.tolist()
-        labels = targets['labels'].tolist()
-        areas = targets['area'].tolist()
-        iscrowd = targets['iscrowd'].tolist()
-        if 'masks' in targets:
-            masks = targets['masks']
+        labels = targets["labels"].tolist()
+        areas = targets["area"].tolist()
+        iscrowd = targets["iscrowd"].tolist()
+        if "masks" in targets:
+            masks = targets["masks"]
             # make masks Fortran contiguous for coco_mask
             masks = masks.permute(0, 2, 1).contiguous().permute(0, 2, 1)
-        if 'keypoints' in targets:
-            keypoints = targets['keypoints']
+        if "keypoints" in targets:
+            keypoints = targets["keypoints"]
             keypoints = keypoints.reshape(keypoints.shape[0], -1).tolist()
         num_objs = len(bboxes)
         for i in range(num_objs):
             ann = {}
-            ann['image_id'] = image_id
-            ann['bbox'] = bboxes[i]
-            ann['category_id'] = labels[i]
+            ann["image_id"] = image_id
+            ann["bbox"] = bboxes[i]
+            ann["category_id"] = labels[i]
             categories.add(labels[i])
-            ann['area'] = areas[i]
-            ann['iscrowd'] = iscrowd[i]
-            ann['id'] = ann_id
-            if 'masks' in targets:
+            ann["area"] = areas[i]
+            ann["iscrowd"] = iscrowd[i]
+            ann["id"] = ann_id
+            if "masks" in targets:
                 ann["segmentation"] = coco_mask.encode(masks[i].numpy())
-            if 'keypoints' in targets:
-                ann['keypoints'] = keypoints[i]
-                ann['num_keypoints'] = sum(k != 0 for k in keypoints[i][2::3])
-            dataset['annotations'].append(ann)
+            if "keypoints" in targets:
+                ann["keypoints"] = keypoints[i]
+                ann["num_keypoints"] = sum(k != 0 for k in keypoints[i][2::3])
+            dataset["annotations"].append(ann)
             ann_id += 1
-    dataset['categories'] = [{'id': i} for i in sorted(categories)]
+    dataset["categories"] = [{"id": i} for i in sorted(categories)]
     coco_ds.dataset = dataset
     coco_ds.createIndex()
     return coco_ds
 
 
-def get_coco_api_from_dataset(dataset):
+def get_coco_api_from_dataset(dataset, source_name, task_name):
     for _ in range(10):
         if isinstance(dataset, torchvision.datasets.CocoDetection):
             break
@@ -217,8 +220,8 @@ def get_coco_api_from_dataset(dataset):
             dataset = dataset.dataset
     if isinstance(dataset, torchvision.datasets.CocoDetection):
         return dataset.coco
-    
-    return convert_to_coco_api(dataset)
+
+    return convert_to_coco_api(ds=dataset, source_name=source_name, task_name=task_name)
 
 
 class CocoDetection(torchvision.datasets.CocoDetection):
@@ -235,11 +238,17 @@ class CocoDetection(torchvision.datasets.CocoDetection):
         return img, target
 
 
-def get_coco(root, image_set, transforms, mode='instances'):
+def get_coco(root, image_set, transforms, mode="instances"):
     anno_file_template = "{}_{}2017.json"
     PATHS = {
-        "train": ("train2017", os.path.join("annotations", anno_file_template.format(mode, "train"))),
-        "val": ("val2017", os.path.join("annotations", anno_file_template.format(mode, "val"))),
+        "train": (
+            "train2017",
+            os.path.join("annotations", anno_file_template.format(mode, "train")),
+        ),
+        "val": (
+            "val2017",
+            os.path.join("annotations", anno_file_template.format(mode, "val")),
+        ),
         # "train": ("val2017", os.path.join("annotations", anno_file_template.format(mode, "val")))
     }
 

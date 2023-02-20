@@ -7,9 +7,10 @@ from models.setup import ModelSetup
 from models.dynamic_loss import DynamicWeightedLoss
 
 from .coco_eval import get_eval_params_dict
-from .coco_utils import get_cocos
+from .coco_utils import get_lesion_detection_cocos
 
 from datetime import datetime
+
 
 def get_optimiser(params, setup: ModelSetup) -> Optimizer:
 
@@ -51,8 +52,10 @@ def get_lr_scheduler(optimizer: Optimizer, setup: ModelSetup) -> _LRScheduler:
 
     return lr_scheduler
 
+
 def num_params(model):
     return sum([param.nelement() for param in model.parameters()])
+
 
 def print_params_setup(model):
     print(f"[model]: {num_params(model):,}")
@@ -104,7 +107,7 @@ def get_coco_eval_params(
         eval_params_dict = save_dict["eval_params_dict"]
 
     else:
-        train_coco, val_coco, test_coco = get_cocos(
+        train_coco, val_coco, test_coco = get_lesion_detection_cocos(
             train_dataloader, val_dataloader, test_dataloader
         )
 
@@ -126,12 +129,11 @@ def get_coco_eval_params(
 
 
 def get_dynamic_loss(loss_keys, device):
-    dynamic_loss_weight = DynamicWeightedLoss(
-        keys=loss_keys
-    )
+    dynamic_loss_weight = DynamicWeightedLoss(keys=loss_keys)
     dynamic_loss_weight.to(device)
 
     return dynamic_loss_weight
+
 
 def get_params(model, dynamic_loss_weight):
     params = [p for p in model.parameters() if p.requires_grad]
@@ -139,6 +141,3 @@ def get_params(model, dynamic_loss_weight):
         params += [p for p in dynamic_loss_weight.parameters() if p.requires_grad]
     return params
 
-
-
-    

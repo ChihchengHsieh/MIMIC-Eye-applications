@@ -150,7 +150,7 @@ class ModelSetup:
             "o2sat",
             "sbp",
             "dbp",
-            "pain",
+            # "pain",
             "acuity",
         ]
     )
@@ -166,8 +166,6 @@ class ModelSetup:
 
     chexpert_label_cols: List[str] = field(
         default_factory=lambda: [
-            "subject_id_chexpert",
-            "study_id_chexpert",
             "Atelectasis_chexpert",
             "Cardiomegaly_chexpert",
             "Consolidation_chexpert",
@@ -187,8 +185,6 @@ class ModelSetup:
 
     negbio_label_cols: List[str] = field(
         default_factory=lambda: [
-            "subject_id_negbio",
-            "study_id_negbio",
             "Atelectasis_negbio",
             "Cardiomegaly_negbio",
             "Consolidation_negbio",

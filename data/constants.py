@@ -13,7 +13,7 @@ DEFAULT_MIMIC_CLINICAL_NUM_COLS: List[str] = [
     "o2sat",
     "sbp",
     "dbp",
-    "pain",
+    # "pain",
     "acuity",
 ]
 

@@ -22,10 +22,12 @@ from models.components.general import Activation, map_inputs, map_labels
 from models.unet import UNetDecoder
 from .rcnn import (
     EyeRCNNTransform,
+    XAMIAnchorGenerator,
     XAMIRegionProposalNetwork,
     XAMIRoIHeads,
     XAMITwoMLPHead,
 )
+
 
 class GeneralTaskPerformer(nn.Module):
     def __init__(self, name: str, loses: List[str], label_name_mapper=None) -> None:
@@ -35,18 +37,16 @@ class GeneralTaskPerformer(nn.Module):
         super().__init__()
 
     def forward(self, fused, targets):
-        '''
+        """
         fuse: {
             "z":
         }
-        '''
+        """
         pass
 
 
 class ObjectDetectionParameters(object):
-    def __init__(
-        self, task_name, input_name_mapper, label_name_mapper, out_channels, num_classes, image_size,
-    ) -> None:
+    def __init__(self, task_name, out_channels, num_classes, image_size,) -> None:
 
         # rpn params
         self.rpn_pre_nms_top_n_train = 2000
@@ -118,7 +118,12 @@ class ObjectDetectionPerformer(GeneralTaskPerformer):
         self.__init_transform(self.params)
 
     def forward(self, fused, targets):
-        z = fused['z']
+        z = fused["z"]
+
+        batch_size = z.shape[0]
+        scaled_image_sizes = [
+            (self.params.image_size, self.params.image_size)
+        ] * batch_size
 
         if isinstance(z, torch.Tensor):
             z = OrderedDict([("0", z)])
@@ -126,11 +131,13 @@ class ObjectDetectionPerformer(GeneralTaskPerformer):
         proposals, proposal_losses = self.rpn(z, targets)
 
         detections, detector_losses = self.roi_heads(
-            z, proposals, targets["image_list_image_sizes"], targets,
+            z, proposals, scaled_image_sizes, targets,
         )
 
         detections = self.postprocess(
-            detections, targets["image_list_image_sizes"], targets["original_image_sizes"]
+            detections,
+            scaled_image_sizes,
+            [t[self.params.task_name]["original_image_sizes"] for t in targets],
         )
 
         losses = {}
@@ -157,8 +164,8 @@ class ObjectDetectionPerformer(GeneralTaskPerformer):
 
     def __init_rpn(self, params):
 
-        rpn_anchor_generator = AnchorGenerator(
-            params.anchor_sizes, params.aspect_ratios
+        rpn_anchor_generator = XAMIAnchorGenerator(
+            params.image_size, params.anchor_sizes, params.aspect_ratios
         )
 
         rpn_head = RPNHead(
@@ -175,6 +182,8 @@ class ObjectDetectionPerformer(GeneralTaskPerformer):
         )
 
         self.rpn = XAMIRegionProposalNetwork(
+            params.task_name,
+            params.image_size,
             rpn_anchor_generator,
             rpn_head,
             params.rpn_fg_iou_thresh,
@@ -211,6 +220,7 @@ class ObjectDetectionPerformer(GeneralTaskPerformer):
 
         self.roi_heads = XAMIRoIHeads(
             # Box
+            self.params.task_name,
             box_roi_pool,
             box_head,
             box_predictor,
@@ -231,8 +241,9 @@ class ObjectDetectionPerformer(GeneralTaskPerformer):
         image_std = [0.229, 0.224, 0.225]
 
         self.transform = EyeRCNNTransform(
-            params.transform_min_size,
-            params.transform_max_size,
+            self.params.task_name,
+            # params.transform_min_size,
+            # params.transform_max_size,
             image_mean,
             image_std,
             fixed_size=[params.image_size, params.image_size],
@@ -256,14 +267,12 @@ class ObjectDetectionPerformer(GeneralTaskPerformer):
 
 
 class HeatmapGenerationParameters(object):
-    def __init__(
-        self, task_name, label_name_mapper, input_channel, decoder_channels
-    ) -> None:
+    def __init__(self, task_name, input_channel, decoder_channels) -> None:
         super().__init__()
         self.task_name = task_name
-        self.label_name_mapper = label_name_mapper
         self.input_channel = input_channel
         self.decoder_channels = decoder_channels
+
 
 class HeatmapGenerationPerformer(GeneralTaskPerformer):
 
@@ -282,12 +291,13 @@ class HeatmapGenerationPerformer(GeneralTaskPerformer):
         self.loss_fn = nn.BCEWithLogitsLoss()
 
     def forward(self, fused, targets):
-        z = fused['z']
+        z = fused["z"]
 
         output = self.model(z)
 
         loss = self.loss_fn(
-            output, torch.stack([t["heatmaps"] for t in targets], dim=0).float()
+            output,
+            torch.stack([t[self.params.task_name]["heatmaps"] for t in targets], dim=0).float(),
         )
 
         return {
@@ -300,7 +310,6 @@ class ImageClassificationParameters(object):
     def __init__(
         self,
         task_name,
-        label_name_mapper,
         input_channel,
         num_classes,
         pool="avg",
@@ -309,7 +318,6 @@ class ImageClassificationParameters(object):
     ) -> None:
         super().__init__()
         self.task_name = task_name
-        self.label_name_mapper = label_name_mapper
         self.input_channel = input_channel
         self.num_classes = num_classes
         self.pool = pool
@@ -319,7 +327,7 @@ class ImageClassificationParameters(object):
 
 class ImageClassificationPerformer(GeneralTaskPerformer):
 
-    """
+    """【
     Expecting targets -> {
         classifications: tensor       
     }
@@ -351,16 +359,17 @@ class ImageClassificationPerformer(GeneralTaskPerformer):
 
     def forward(self, fused, targets):
         z = fused["z"]
-        
+
         output = self.model(z)
 
         loss = self.loss_fn(
-            output, torch.stack([t["classifications"] for t in targets], dim=0).float()
+            # output, torch.stack([t["classifications"] for t in targets], dim=0).float()
+            output,
+            torch.stack([t[self.params.task_name]["classifications"] for t in targets], dim=0).float(),
         )
 
         return {
             "losses": {"classification_loss": loss},
             "outputs": output,
         }
-
 

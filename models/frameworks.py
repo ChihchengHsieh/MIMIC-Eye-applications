@@ -6,6 +6,7 @@ from torch import nn
 import torch
 
 from data.helpers import map_target_to_device
+from data.utils import chain_map
 from models.components.general import map_labels
 
 
@@ -32,19 +33,20 @@ class ExtractFusePerform(nn.Module):
         # extract feature maps # doesn't allow the feature extractors created but not used.
 
         feature_maps = OrderedDict(
-            {k: self.feature_extractors[k](x[k]) for k in self.feature_extractors.keys()}
+            {
+                k: self.feature_extractors[k](x)
+                for k in self.feature_extractors.keys()
+            }
         )
-      
-      
-        # k is the task name or extractor name.
-         
-        fused = self.fusor(feature_maps)
-        #fused is a dict: {"z": feature maps}
 
+        # k is the task name or extractor name.
+
+        fused = self.fusor(feature_maps)
+        # fused is a dict: {"z": feature maps}
 
         outputs = OrderedDict(
             {
-                k: self.task_performers[k](fused, targets[k])
+                k: self.task_performers[k](fused, targets)
                 for k in self.task_performers.keys()
             }
         )
@@ -70,31 +72,53 @@ class ExtractFusePerform(nn.Module):
     #                     )
 
     def prepare(self, x, targets):
+        # first, do the mapping
+
+        # for k in self.feature_extractors.keys():
+        #     x[k] = chain_map(x[k])
+
+        # for k in self.task_performers.keys():
+        #     targets[k] = chain_map(targets[k])
 
         if "lesion-detection" in self.task_performers.keys():
             x, targets = self.lesion_detetion_prepare(x, targets)
-            
+
+        # for k in [k for k in self.task_performers.keys() if k != "lesion-detection"]:
+        #     targets[k] = chain_map(targets[k])
+
         return x, targets
 
     def lesion_detetion_prepare(self, x, targets):
+
+        # instead of putting these in the input x, we put it in the target of the object-detection.
+
+        # need to check how to involve fixations here.
+
+        batched_images, targets = self.task_performers["lesion-detection"].transform(
+            [i["xrays"]["images"] for i in x], targets
+        )
+
         original_image_sizes = []
-        for img in x["xrays"]:
-            val = img.shape[-2:]
+        for x_i in x:
+            val = x_i['xrays']['images'].shape[-2:]
             assert len(val) == 2
             original_image_sizes.append((val[0], val[1]))
-        
-        # instead of putting these in the input x, we put it in the target of the object-detection.
-        
-        # need to check how to involve fixations here.
-        image_list, targets = self.task_performers['object-detection'].transform(x["images"], targets)
-        
-        self.task_performers['object-detection'].valid_bbox(targets)
 
-        x['images']  =  image_list.tensors
+    
+        # assign image sizes
+        for i, (b_i, o_s) in enumerate(zip(batched_images, original_image_sizes)):
+            x[i]['xrays']['images'] = b_i
+            targets[i]['lesion-detection']['original_image_sizes'] = o_s
 
-        targets["original_image_sizes"] = original_image_sizes
-        targets['image_list_image_sizes'] = image_list.image_sizes
-        targets['image_list_tensors_shape'] = image_list.tensors.shape
+
+        self.task_performers["lesion-detection"].valid_bbox([t["lesion-detection"] for t in targets])
+
+        # targets["lesion-detection"] = chain_map(targets["lesion-detection"])
+        # targets["lesion-detection"]["original_image_sizes"] = original_image_sizes
+        # targets["lesion-detection"]["image_list_image_sizes"] = image_list.image_sizes
+        # targets["lesion-detection"][
+        #     "image_list_tensors_shape"
+        # ] = image_list.tensors.shape # (batch_size, 3, image_size, image_size)
 
         return x, targets
 
@@ -103,7 +127,7 @@ class ExtractFusePerform(nn.Module):
         loss_keys = []
         for k, p in self.task_performers.items():
             for l in p.loses:
-                loss_keys.append(f"{k}_{l}")
+                loss_keys.append(f"{k}_{p.name}_{l}")
 
         return loss_keys
 

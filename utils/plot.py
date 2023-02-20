@@ -75,7 +75,6 @@ def plot_losses(
     else:
         test_data = test_logers
 
-
     train_data_keys = train_data[0].keys()
 
     fig, subplots = plt.subplots(
@@ -95,7 +94,7 @@ def plot_losses(
             label="train",
             color="steelblue",
         )
-        
+
         if k in val_data[0].keys():
             subplots[i].plot(
                 [data[k] for data in val_data], marker="o", label="val", color="orange"
@@ -265,6 +264,99 @@ def plot_ap_ars(
     recall_ax.legend(loc="upper left")
 
     recall_ax.set_xlabel("Epoch")
+
+    plt.plot()
+    plt.pause(0.01)
+
+    return fig
+
+
+def performance_list(all_tasks, performance, split):
+    p_list = {}
+
+    if len(performance[split]) == 0:
+        return None
+
+    # all_tasks = performance[list][0].keys()
+
+    lesion_detection_str = "lesion-detection"
+    if lesion_detection_str in all_tasks:
+        p_list[lesion_detection_str] = {
+            "ap": [p["lesion-detection"]["ap"] for p in performance[split]],
+            "ar": [p["lesion-detection"]["ar"] for p in performance[split]],
+        }
+
+    negbio_classification_str = "negbio-classification"
+    if negbio_classification_str in all_tasks:
+        p_list[negbio_classification_str] = {
+            "auc": [p["negbio-classification"]['auc'] for p in performance[split]]
+        }
+
+    chexpert_classification_str = "chexpert-classification"
+    if chexpert_classification_str in all_tasks:
+        p_list[chexpert_classification_str] = {
+            "auc": [p["chexpert-classification"]['auc'] for p in performance[split]]
+        }
+
+    fixation_generation_str = "fixation-generation"
+    if fixation_generation_str in all_tasks:
+        p_list[fixation_generation_str] = {
+            "iou": [p["fixation-generation"]['iou'] for p in performance[split]]
+        }
+
+    return p_list
+
+split_to_colour= {
+    "train":"royalblue",
+    "val": "darkorange",
+    "test": "red",
+}
+
+
+def plot_performance(performance, all_tasks, fig_title=None,) -> Figure:
+    """
+    Plot both training and validation evaluator during training to check overfitting.
+    """
+
+    all_p_list = {
+        "train": performance_list(
+            all_tasks=all_tasks, performance=performance, split="train"
+        ),
+        "val": performance_list(
+            all_tasks=all_tasks, performance=performance, split="val"
+        ),
+        "test": performance_list( all_tasks=all_tasks, performance=performance, split="test"),
+    }
+    
+    axes_idx_map = {}
+    current_idx = 0
+
+    for s, p_list in all_p_list.items():
+        if p_list is not None:
+            for t in all_tasks:
+                for k, v in p_list[t].items():
+                    axes_idx_map[f"{t}_{k}"] = current_idx
+                    current_idx += 1
+            break
+
+
+    fig, axes = plt.subplots(current_idx, figsize=(10, 5*current_idx), dpi=80, sharex=True,)
+
+    if fig_title:
+        fig.suptitle(f"{fig_title}")
+
+    current_idx = 0
+    for t in all_tasks:
+        for s, p_list in all_p_list.items():
+            if p_list is not None:
+                for k, v in p_list[t].items():
+                    axes[axes_idx_map[f"{t}_{k}"]].set_title(f"{t}_{k}")
+                    axes[axes_idx_map[f"{t}_{k}"]].plot(
+                        v, marker="o", label=s, color=split_to_colour[s],
+                    )
+                    axes[axes_idx_map[f"{t}_{k}"]].legend(loc="upper left")
+                    axes[axes_idx_map[f"{t}_{k}"]].set_xlabel("Epoch")
+                    current_idx += 1
 
     plt.plot()
     plt.pause(0.01)
@@ -542,10 +634,12 @@ def plot_result(
 
     return bb_fig, seg_fig
 
-from models.load import  get_trained_model
+
+from models.load import get_trained_model
 from data.constants import DEFAULT_REFLACX_LABEL_COLS
 import utils.print as print_f
 from utils.train import num_params
+
 
 def plot_training_progress(trained_models, device):
     for trained_model in trained_models:

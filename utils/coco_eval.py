@@ -38,7 +38,9 @@ def get_eval_params_dict(
     eval_params_dict["bbox"].maxDets = [1, 10]
     eval_params_dict["segm"].maxDets = [1, 10]
 
-    coco_gt = get_coco_api_from_dataset(dataset)
+    coco_gt = get_coco_api_from_dataset(
+        dataset, source_name="xrays", task_name="lesion-detection"
+    )
 
     if not coco_gt is None:
         for k in eval_params_dict.keys():
@@ -289,7 +291,7 @@ def external_get_num_fps(
     # dimension of precision: [TxRxKxAxM]
     s = evaluator.eval["num_fps"]
     # IoU
-   # dimension of recall: [TxKxAxM]
+    # dimension of recall: [TxKxAxM]
     if iouThr is not None:
         if isinstance(iouThr, float):
             t = np.where(iouThr == p.iouThrs)[0]
@@ -304,8 +306,9 @@ def external_get_num_fps(
         sum_s = -1
     else:
         sum_s = np.sum(s[s > -1])
-        
+
     return sum_s
+
 
 def external_get_num_fns(
     evaluator, iouThr=None, areaRng="all", maxDets=100,
@@ -317,7 +320,7 @@ def external_get_num_fns(
     # dimension of precision: [TxRxKxAxM]
     s = evaluator.eval["num_fns"]
     # IoU
-   # dimension of recall: [TxKxAxM]
+    # dimension of recall: [TxKxAxM]
     if iouThr is not None:
         if isinstance(iouThr, float):
             t = np.where(iouThr == p.iouThrs)[0]
@@ -332,8 +335,9 @@ def external_get_num_fns(
         sum_s = -1
     else:
         sum_s = np.sum(s[s > -1])
-        
+
     return sum_s
+
 
 def external_get_num_tps(
     evaluator, iouThr=None, areaRng="all", maxDets=100,
@@ -345,7 +349,7 @@ def external_get_num_tps(
     # dimension of precision: [TxRxKxAxM]
     s = evaluator.eval["num_tps"]
     # IoU
-   # dimension of recall: [TxKxAxM]
+    # dimension of recall: [TxKxAxM]
     if iouThr is not None:
         if isinstance(iouThr, float):
             t = np.where(iouThr == p.iouThrs)[0]
@@ -360,8 +364,9 @@ def external_get_num_tps(
         sum_s = -1
     else:
         sum_s = np.sum(s[s > -1])
-        
+
     return sum_s
+
 
 def external_summarize(
     evaluator, ap=1, iouThr=None, areaRng="all", maxDets=100, print_result=False,
@@ -376,7 +381,7 @@ def external_summarize(
             f"{iouThr:0.2f}"
         elif isinstance(iouThr, list):
             iouStr = f"{iouThr[0]:0.2f}:{iouThr[-1]:0.2f}"
-            
+
     else:
         iouStr = f"{p.iouThrs[0]:0.2f}:{p.iouThrs[-1]:0.2f}"
 
@@ -414,7 +419,9 @@ def external_summarize(
         mean_s = np.mean(s[s > -1])
 
     if print_result:
-        print(f"{titleStr:<18} {typeStr} @[ {io_type_str}={iouStr:<9} | area={areaRng:>6s} | maxDets={maxDets:>3d} ] = {mean_s:0.3f}")
+        print(
+            f"{titleStr:<18} {typeStr} @[ {io_type_str}={iouStr:<9} | area={areaRng:>6s} | maxDets={maxDets:>3d} ] = {mean_s:0.3f}"
+        )
 
     return mean_s
 

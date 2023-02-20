@@ -1,4 +1,5 @@
 import os
+from sklearn.preprocessing import LabelEncoder
 import torch
 import json
 
@@ -14,6 +15,7 @@ from typing import Callable, Dict, List, Tuple, Union
 from pathlib import Path
 from PIL import Image
 from copy import deepcopy
+from data.utils import chain_map
 
 from models.setup import ModelSetup
 from .constants import (
@@ -24,9 +26,7 @@ from .constants import (
     DEFAULT_REFLACX_PATH_COLS,
     DEFAULT_REFLACX_REPETITIVE_LABEL_MAP,
 )
-from .paths import (
-    SPREADSHEET_FOLDER
-)
+from .paths import SPREADSHEET_FOLDER
 
 
 from .helpers import map_dict_to_device, map_target_to_device, target_processing
@@ -48,9 +48,11 @@ class ReflacxDataset(data.Dataset):
     def __init__(
         self,
         MIMIC_EYE_PATH: str,
+        clinical_numerical_cols,
+        clinical_categorical_cols,
+        normalise_clinical_num=False,
         split_str: str = None,
-        transforms: Callable[[Image.Image, Dict],
-                             Tuple[torch.Tensor, Dict]] = None,
+        transforms: Callable[[Image.Image, Dict], Tuple[torch.Tensor, Dict]] = None,
         dataset_mode: str = "normal",
         labels_cols: List[str] = DEFAULT_REFLACX_LABEL_COLS,
         all_disease_cols: List[str] = REFLACX_ALL_LABEL_COLS,
@@ -63,8 +65,10 @@ class ReflacxDataset(data.Dataset):
         spreadsheets_folder=SPREADSHEET_FOLDER,
         with_bboxes: bool = True,
         with_fixations: bool = True,
-        fiaxtions_mode='normal',  # [silent, reporting, all]
-
+        with_clincal: bool = True,
+        with_chexpert: bool = True,
+        with_negbio: bool = True,
+        fiaxtions_mode="normal",  # [silent, reporting, all]
     ):
         # Data loading selections
 
@@ -85,8 +89,15 @@ class ReflacxDataset(data.Dataset):
         self.with_fixations: bool = with_fixations
         self.fiaxtions_mode = fiaxtions_mode
         self.with_bboxes = with_bboxes
+        self.clinical_numerical_cols = clinical_numerical_cols
+        self.normalise_clinical_num = normalise_clinical_num
+        self.clinical_categorical_cols = clinical_categorical_cols
+        self.with_chexpert = with_chexpert
+        self.with_negbio = with_negbio
 
-        self.df_path = "reflacx_clinical_eye.csv" if self.with_clinical else "reflacx_eye.csv"
+        self.df_path = (
+            "reflacx_clinical_eye.csv" if self.with_clinical else "reflacx_eye.csv"
+        )
 
         # load dataframe
         self.df: pd.DataFrame = pd.read_csv(
@@ -103,8 +114,7 @@ class ReflacxDataset(data.Dataset):
                 if p_col == "bbox_paths":
 
                     def apply_bbox_paths_transform(input_paths_str: str) -> List[str]:
-                        input_paths_list: List[str] = json.loads(
-                            input_paths_str)
+                        input_paths_list: List[str] = json.loads(input_paths_str)
                         replaced_path_list: List[str] = [
                             p.replace("{XAMI_MIMIC_PATH}", MIMIC_EYE_PATH)
                             for p in input_paths_list
@@ -125,8 +135,13 @@ class ReflacxDataset(data.Dataset):
         # preprocessing data.
         self.preprocess_label()
 
-        self.chexpert_label_cols = [c for c in self.df.columns if c.endswith("_chexpert")]
-        self.negbio_label_cols =  [c for c in self.df.columns if c.endswith("_negbio")]
+        self.chexpert_label_cols = [
+            c for c in self.df.columns if c.endswith("_chexpert")
+        ]
+        self.negbio_label_cols = [c for c in self.df.columns if c.endswith("_negbio")]
+
+        if self.with_clinical:
+            self.preprocess_clinical_df()
 
         super().__init__()
 
@@ -196,7 +211,7 @@ class ReflacxDataset(data.Dataset):
         #             boxes_df = boxes_df.append({'xmin':boxes_df.at[index,'xmin'], 'ymin':boxes_df.at[index,'ymin'], 'xmax':boxes_df.at[index,'xmax'],
         #                                         'ymax':boxes_df.at[index,'ymax'], 'xmax':boxes_df.at[index,'xmax'],
         #                                         'certainty':boxes_df.at[index,'certainty'], 'label':label},
-            # ignore_index=True)
+        # ignore_index=True)
 
         # filtering out the diseases not in the label_cols
         boxes_df = boxes_df[boxes_df[self.labels_cols].any(axis=1)]
@@ -204,30 +219,32 @@ class ReflacxDataset(data.Dataset):
         # instead of doing this version. we then get repeat the bounding boxes with more than one label
         # boxes_df["label"] = boxes_df[self.labels_cols].idxmax(axis=1)
 
-        label_df = boxes_df.loc[:, DEFAULT_REFLACX_LABEL_COLS].reset_index(
-            drop=True)
+        label_df = boxes_df.loc[:, DEFAULT_REFLACX_LABEL_COLS].reset_index(drop=True)
 
-        self.label_df = label_df
+        labels = [
+            list(label_df.loc[i, label_df.any()].index) for i in range(len(label_df))
+        ]
 
-        labels = [list(label_df.loc[i, label_df.any()].index)
-                  for i in range(len(label_df))]
-
-        boxes_df['label'] = labels
+        boxes_df["label"] = labels
 
         new_df_list = []
 
         if len(boxes_df) > 0:
             for _, instance in boxes_df.iterrows():
                 for l in instance["label"]:
-                    new_df_list.append({
-                        "xmin": instance['xmin'],
-                        "ymin": instance['ymin'],
-                        "xmax": instance['xmax'],
-                        "ymax": instance['ymax'],
-                        "label": l,
-                    })
+                    new_df_list.append(
+                        {
+                            "xmin": instance["xmin"],
+                            "ymin": instance["ymin"],
+                            "xmax": instance["xmax"],
+                            "ymax": instance["ymax"],
+                            "label": l,
+                        }
+                    )
 
-        return pd.DataFrame(new_df_list, columns=["xmin", "ymin", "xmax", "ymax", "label"])
+        return pd.DataFrame(
+            new_df_list, columns=["xmin", "ymin", "xmax", "ymax", "label"]
+        )
 
         # boxes_df = boxes_df[self.box_fix_cols + ["label"]]
         # return boxes_df
@@ -247,9 +264,7 @@ class ReflacxDataset(data.Dataset):
         if self.with_bboxes:
 
             # Get bounding boxes.
-            bboxes_df = self.generate_bboxes_df(
-                pd.read_csv(data["bbox_path"])
-            )
+            bboxes_df = self.generate_bboxes_df(pd.read_csv(data["bbox_path"]))
 
             self.bboxes_df = bboxes_df
 
@@ -258,12 +273,12 @@ class ReflacxDataset(data.Dataset):
             )  # x1, y1, x2, y2
 
             # Calculate area of boxes.
-            area = (bboxes[:, 3] - bboxes[:, 1]) * \
-                (bboxes[:, 2] - bboxes[:, 0])
+            area = (bboxes[:, 3] - bboxes[:, 1]) * (bboxes[:, 2] - bboxes[:, 0])
 
             labels = torch.tensor(
-                np.array(bboxes_df["label"].apply(
-                    lambda l: self.disease_to_idx(l))).astype(int),
+                np.array(
+                    bboxes_df["label"].apply(lambda l: self.disease_to_idx(l))
+                ).astype(int),
                 dtype=torch.int64,
             )
 
@@ -282,30 +297,42 @@ class ReflacxDataset(data.Dataset):
                     "image_id": image_id,
                     "area": area,
                     "iscrowd": iscrowd,
-                    "dicom_id": data['dicom_id'],
-                    "image_path": data['image_path']
+                    "dicom_id": data["dicom_id"],
+                    "image_path": data["image_path"],
                 }
             }
-            
-            target['chexpert_classifications'] = {"classifications": torch.tensor(data[self.chexpert_label_cols])}
-            target['negbio_classifications'] = {"classifications": torch.tensor(data[self.negbio_label_cols])}
+            # this has to be the same name as the task_performer.
 
+        if self.with_chexpert:
+            target["chexpert-classification"] = {
+                "classifications": torch.tensor(data[self.chexpert_label_cols]) == 1
+            }
+
+        if self.with_negbio:
+            target["negbio-classification"] = {
+                "classifications": torch.tensor(data[self.negbio_label_cols]) == 1
+            }
 
         if self.with_fixations:
             # get fixations
-            target["fixation_path"] = data["fixation_path"]
+            # target["fixation_path"] = data["fixation_path"]
             fiaxtion_df = pd.read_csv(data["fixation_path"])
+
             if self.fiaxtions_mode != "normal":
-                utterance_path = os.path.join(os.path.dirname(
-                    data["fixation_path"]), "timestamps_transcription.csv")
+                utterance_path = os.path.join(
+                    os.path.dirname(data["fixation_path"]),
+                    "timestamps_transcription.csv",
+                )
                 utterance_df = pd.read_csv(utterance_path)
-                report_starting_time = utterance_df.iloc[0]['timestamp_start_word']
+                report_starting_time = utterance_df.iloc[0]["timestamp_start_word"]
                 if self.fiaxtions_mode == "reporting":
-                    fiaxtion_df[fiaxtion_df['timestamp_start_fixation']
-                                >= report_starting_time]
+                    fiaxtion_df = fiaxtion_df[
+                        fiaxtion_df["timestamp_start_fixation"] >= report_starting_time
+                    ]
                 elif self.fiaxtions_mode == "silent":
-                    fiaxtion_df[fiaxtion_df['timestamp_start_fixation']
-                                < report_starting_time]
+                    fiaxtion_df = fiaxtion_df[
+                        fiaxtion_df["timestamp_start_fixation"] < report_starting_time
+                    ]
                 else:
                     raise ValueError("Not supported fiaxtions mode.")
 
@@ -313,15 +340,56 @@ class ReflacxDataset(data.Dataset):
                 get_fixations_dict_from_fixation_df(fiaxtion_df),
                 (data["image_size_x"], data["image_size_y"]),
             ).astype(np.float32)
-            
-            target['fixation-generation'] = {'fixations':  fix}
+
+            target["fixation-generation"] = {"heatmaps": fix}
             # img_t, target, fix_t = self.transforms(img, target, fix)
             # target["fixations"] = fix_t
         # else:
+        input_dict = {}
+
+        if self.with_clinical:
+            clinical_num = None
+            if (
+                not self.clinical_numerical_cols is None
+                and len(self.clinical_numerical_cols) > 0
+            ):
+                if self.normalise_clinical_num:
+                    clinical_num = (
+                        torch.tensor(
+                            self.clinical_num_norm.transform(
+                                np.array([data[self.clinical_numerical_cols]])
+                            ),
+                            dtype=float,
+                        )
+                        .float()
+                        .squeeze()
+                    )
+                else:
+                    clinical_num = torch.tensor(
+                        np.array(data[self.clinical_numerical_cols], dtype=float)
+                    ).float()
+
+            clinical_cat = None
+            if (
+                not self.clinical_categorical_cols is None
+                and len(self.clinical_categorical_cols) > 0
+            ):
+                clinical_cat = {
+                    c: torch.tensor(np.array(data[c], dtype=int))
+                    for c in self.clinical_categorical_cols
+                }
+
+                # clinical_cat = torch.tensor(
+                #     np.array(data[self.clinical_categorical_cols], dtype=int)
+                # )
+
+            input_dict.update({"clinical": {"cat": clinical_cat, "num": clinical_num}})
 
         img_t, target = self.transforms(img, target)
 
-        return {"image": img_t}, target
+        input_dict.update({"xrays": {"images": img_t}})
+
+        return input_dict, target
 
     def prepare_input_from_data(
         self,
@@ -335,11 +403,18 @@ class ReflacxDataset(data.Dataset):
     ]:
         inputs, targets = data
 
-        images = [t["image"] for t in inputs]
+        inputs = list(inputs)
+        targets = list(targets)
 
-        targets = [target_processing(t) for t in targets]
+        # images = [t["image"] for t in inputs]
+        # inputs = [target_processing(i) for i in inputs]
+        # targets = [target_processing(t) for t in targets]
 
-        return {"xrays": images}, targets
+        # by doing this, each source and task has their own dict to feed into models or functions.
+        # inputs = chain_map(inputs)
+        # targets = chain_map(targets)
+
+        return inputs, targets
 
     def get_idxs_from_dicom_id(self, dicom_id: str) -> List[str]:
         return [
@@ -347,6 +422,15 @@ class ReflacxDataset(data.Dataset):
             for i in self.df.index[self.df["dicom_id"].eq(dicom_id)]
         ]
 
-
     def get_image_path_from_dicom_id(self, dicom_id: str) -> List[str]:
         return self.df[self.df["dicom_id"] == dicom_id].iloc[0]["image_path"]
+
+    def preprocess_clinical_df(self,):
+        self.encoders_map: Dict[str, LabelEncoder] = {}
+
+        # encode the categorical cols.
+        for col in self.clinical_categorical_cols:
+            le = LabelEncoder()
+            self.df[col] = le.fit_transform(self.df[col])
+            self.encoders_map[col] = le
+

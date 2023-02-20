@@ -7,8 +7,10 @@ from torch import nn
 import torch.nn.functional as F
 import numpy as np
 import torch
+from data.utils import chain_map
 
 from models.components.general import Conv2dBNReLu, Deconv2dBNReLu, map_inputs
+
 
 class SpatialisationBlock(nn.Module):
     def __init__(
@@ -18,8 +20,6 @@ class SpatialisationBlock(nn.Module):
         upsample="interpolate",  # [interpolate, deconv]
     ):
         super().__init__()
-
-
         self.upsample = upsample
 
         if upsample == "deconv":
@@ -43,7 +43,7 @@ class SpatialisationBlock(nn.Module):
         elif self.upsample == "interpolate":
             x = F.interpolate(x, scale_factor=2, mode="nearest")
         else:
-            raise ValueError(f"Not supported upsample method: {upsample}")
+            raise ValueError(f"Not supported upsample method: {self.upsample}")
 
         x = self.convs(x)
 
@@ -61,13 +61,14 @@ class ImageFeatureExtractor(GeneralFeatureExtractor):
     Extracting features maps from a given image, x.
     """
 
-    def __init__(self, input_name_mapper, backbone) -> None:
+    def __init__(self, source_name, backbone) -> None:
         super().__init__("extractor-image")
-        self.input_name_mapper = input_name_mapper
+        self.source_name = source_name
         self.backbone = backbone
 
     def forward(self, x):
-        return self.backbone(x['images'])
+        x = torch.stack([x_i[self.source_name]["images"] for x_i in x], dim=0,)
+        return self.backbone(x)
 
 
 class TabularFeatureExtractor(GeneralFeatureExtractor):
@@ -79,28 +80,37 @@ class TabularFeatureExtractor(GeneralFeatureExtractor):
 
     def __init__(
         self,
-        input_name_mapper: Dict,
+        source_name: str,
         all_cols: list,
         categorical_col_maps: Dict,
         embedding_dim: int,
-        image_size: int,
+        out_dim: int,
         conv_channels,
         out_channels,
         upsample,
     ) -> None:
         super().__init__("extractor-tabular")
+        self.source_name = source_name
+        self.has_cat = len(categorical_col_maps) > 0
+        self.has_num = len(all_cols) - len(categorical_col_maps) > 0
 
-        self.input_name_mapper = input_name_mapper
+        if self.has_cat:
+            self.embs = nn.ModuleDict(
+                {
+                    k: nn.Embedding(v, embedding_dim)
+                    for k, v in categorical_col_maps.items()
+                }
+            )
 
-        self.embs = nn.ModuleDict(
-            {k: nn.Embedding(v, embedding_dim) for k, v in categorical_col_maps.items()}
-        )
+        self.all_cols = all_cols
+        self.categorical_col_maps = categorical_col_maps
+        self.embedding_dim = embedding_dim
 
         deconv_in_channels = (len(all_cols) - len(categorical_col_maps)) + (
             len(categorical_col_maps) * embedding_dim
         )
 
-        expand_times = np.log2(image_size)
+        expand_times = np.log2(out_dim)
 
         self.spatialisations = nn.Sequential(
             *(
@@ -114,30 +124,44 @@ class TabularFeatureExtractor(GeneralFeatureExtractor):
         )
 
     def forward(self, x):
-        '''
+        """
         {
-            'tabular_cat' : categorical tabular data,
-            'tabular_num' : numerical tabular data,
+            'cat' : categorical tabular data,
+            'num' : numerical tabular data,
         }
-        '''
+        """
 
+        list[dict[str, torch.Tensor]]
 
-        x = map_inputs(inputs=x, mapper=self.input_name_mapper)
+        cat_data = [x_i[self.source_name]["cat"] for x_i in x]
+        num_data = [x_i[self.source_name]["num"] for x_i in x]
 
-        emb_out = OrderedDict({k: self.embs(v) for k, v in x["tabular_cat"]})
+        cat_data = chain_map(cat_data)
+        cat_data = {k: torch.stack(v, dim=0) for k, v in cat_data.items()}
+        num_data = torch.stack(num_data)
+        # x = x[self.source_name]
 
-        emb_out_cat = torch.concat(list(emb_out.values()), axis=1)
+        if self.has_cat:
+            emb_out = OrderedDict({k: self.embs[k](v) for k, v in cat_data.items()})
+            emb_out_cat = torch.concat(list(emb_out.values()), axis=1)
 
-        tabular_input = torch.concat(x["tabular_num"], emb_out_cat)
+            if self.has_num:
+                tabular_input = torch.concat([num_data, emb_out_cat], dim=1)
+            else:
+                tabular_input = emb_out_cat
+
+        else:
+            tabular_input = num_data
 
         output = self.spatialisations(tabular_input[:, :, None, None])
 
         return output
 
 
-class SequentialFeatureExtractor(GeenralFeatureExtractor):
-    def __init__(self, encoder_type="", **kwargs) -> None:
+class SequentialFeatureExtractor(GeneralFeatureExtractor):
+    def __init__(self, source_name: str, encoder_type="", **kwargs) -> None:
         super().__init__("extractor-sequential")
+        self.source_name = source_name
         if encoder_type == "transformer":
             encoder_layer = nn.TransformerEncoderLayer(d_model=512, nhead=8)
             transformer_encoder = nn.TransformerEncoder(encoder_layer, num_layers=6)
