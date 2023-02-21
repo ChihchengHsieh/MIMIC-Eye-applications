@@ -63,9 +63,13 @@ class ReflacxDataset(data.Dataset):
         box_coord_cols: List[str] = DEFAULT_REFLACX_BOX_COORD_COLS,
         path_cols: List[str] = DEFAULT_REFLACX_PATH_COLS,
         spreadsheets_folder=SPREADSHEET_FOLDER,
+
+        with_xrays: bool =True,
+        with_clincal: bool = True,
+
+
         with_bboxes: bool = True,
         with_fixations: bool = True,
-        with_clincal: bool = True,
         with_chexpert: bool = True,
         with_negbio: bool = True,
         fiaxtions_mode="normal",  # [silent, reporting, all]
@@ -73,6 +77,9 @@ class ReflacxDataset(data.Dataset):
         # Data loading selections
 
         self.split_str: str = split_str
+
+        self.MIMIC_EYE_PATH = MIMIC_EYE_PATH
+        self.path_cols = path_cols
 
         # Image related
         self.transforms = transforms
@@ -82,24 +89,32 @@ class ReflacxDataset(data.Dataset):
         self.labels_cols: List[str] = labels_cols
         self.all_disease_cols: List[str] = all_disease_cols
         self.repetitive_label_map: Dict[str, List[str]] = repetitive_label_map
-        self.box_fix_cols: List[str] = box_fix_cols
-        self.box_coord_cols: List[str] = box_coord_cols
         self.dataset_mode: str = dataset_mode
+
         self.with_clinical = with_clincal
-        self.with_fixations: bool = with_fixations
-        self.fiaxtions_mode = fiaxtions_mode
-        self.with_bboxes = with_bboxes
-        self.clinical_numerical_cols = clinical_numerical_cols
-        self.normalise_clinical_num = normalise_clinical_num
-        self.clinical_categorical_cols = clinical_categorical_cols
+        if self.with_clinical:
+            self.clinical_numerical_cols = clinical_numerical_cols
+            self.normalise_clinical_num = normalise_clinical_num
+            self.clinical_categorical_cols = clinical_categorical_cols
+            
+        self.with_xrays = with_xrays
+        
         self.with_chexpert = with_chexpert
         self.with_negbio = with_negbio
+        self.with_bboxes = with_bboxes
+        if self.with_bboxes:
+            self.box_fix_cols: List[str] = box_fix_cols
+            self.box_coord_cols: List[str] = box_coord_cols
 
+        self.with_fixations: bool = with_fixations
+        if self.with_fixations:
+            self.fiaxtions_mode = fiaxtions_mode
+
+
+        # deciding which to df load 
         self.df_path = (
             "reflacx_clinical_eye.csv" if self.with_clinical else "reflacx_eye.csv"
         )
-
-        # load dataframe
         self.df: pd.DataFrame = pd.read_csv(
             os.path.join(spreadsheets_folder, self.df_path), index_col=0
         )
@@ -107,30 +122,6 @@ class ReflacxDataset(data.Dataset):
         # get the splited group that we desire.
         if not self.split_str is None:
             self.df: pd.DataFrame = self.df[self.df["split"] == self.split_str]
-
-        # replace the path with local mimic folder path.
-        for p_col in path_cols:
-            if p_col in self.df.columns:
-                if p_col == "bbox_paths":
-
-                    def apply_bbox_paths_transform(input_paths_str: str) -> List[str]:
-                        input_paths_list: List[str] = json.loads(input_paths_str)
-                        replaced_path_list: List[str] = [
-                            p.replace("{XAMI_MIMIC_PATH}", MIMIC_EYE_PATH)
-                            for p in input_paths_list
-                        ]
-                        return replaced_path_list
-
-                    apply_fn: Callable[
-                        [str], List[str]
-                    ] = lambda x: apply_bbox_paths_transform(x)
-
-                else:
-                    apply_fn: Callable[[str], str] = lambda x: str(
-                        Path(x.replace("{XAMI_MIMIC_PATH}", MIMIC_EYE_PATH))
-                    )
-
-                self.df[p_col] = self.df[p_col].apply(apply_fn)
 
         # preprocessing data.
         self.preprocess_label()
@@ -147,6 +138,31 @@ class ReflacxDataset(data.Dataset):
 
     def preprocess_label(self,):
         self.df[self.all_disease_cols] = self.df[self.all_disease_cols].gt(0)
+
+    def replace_paths(self,): 
+        # replace the path with local mimic folder path.
+        for p_col in self.path_cols:
+            if p_col in self.df.columns:
+                if p_col == "bbox_paths":
+                    def apply_bbox_paths_transform(input_paths_str: str) -> List[str]:
+                        input_paths_list: List[str] = json.loads(input_paths_str)
+                        replaced_path_list: List[str] = [
+                            p.replace("{XAMI_MIMIC_PATH}", self.MIMIC_EYE_PATH)
+                            for p in input_paths_list
+                        ]
+                        return replaced_path_list
+
+                    apply_fn: Callable[
+                        [str], List[str]
+                    ] = lambda x: apply_bbox_paths_transform(x)
+
+                else:
+                    apply_fn: Callable[[str], str] = lambda x: str(
+                        Path(x.replace("{XAMI_MIMIC_PATH}", self.MIMIC_EYE_PATH))
+                    )
+
+                self.df[p_col] = self.df[p_col].apply(apply_fn)
+
 
     def load_image_array(self, image_path: str) -> np.ndarray:
         return np.asarray(Image.open(image_path))
@@ -198,27 +214,7 @@ class ReflacxDataset(data.Dataset):
             ].any(axis=1)
 
         # filtering out the diseases not in the label_cols
-        # boxes_df = boxes_df[boxes_df[self.labels_cols].any(axis=1)]
-
-        # ## get labels
-        # for index in boxes_df[self.labels_cols].index:
-        #     count_labels = 0
-        #     for label in self.labels_cols:
-        #         if boxes_df[self.labels_cols].at[index, label] and count_labels==0:
-        #             count_labels +=1
-        #             boxes_df.at[index, "label"] = label
-        #         elif boxes_df[self.labels_cols].at[index, label] and count_labels>0:
-        #             boxes_df = boxes_df.append({'xmin':boxes_df.at[index,'xmin'], 'ymin':boxes_df.at[index,'ymin'], 'xmax':boxes_df.at[index,'xmax'],
-        #                                         'ymax':boxes_df.at[index,'ymax'], 'xmax':boxes_df.at[index,'xmax'],
-        #                                         'certainty':boxes_df.at[index,'certainty'], 'label':label},
-        # ignore_index=True)
-
-        # filtering out the diseases not in the label_cols
         boxes_df = boxes_df[boxes_df[self.labels_cols].any(axis=1)]
-        # get labels
-        # instead of doing this version. we then get repeat the bounding boxes with more than one label
-        # boxes_df["label"] = boxes_df[self.labels_cols].idxmax(axis=1)
-
         label_df = boxes_df.loc[:, DEFAULT_REFLACX_LABEL_COLS].reset_index(drop=True)
 
         labels = [
@@ -246,9 +242,6 @@ class ReflacxDataset(data.Dataset):
             new_df_list, columns=["xmin", "ymin", "xmax", "ymax", "label"]
         )
 
-        # boxes_df = boxes_df[self.box_fix_cols + ["label"]]
-        # return boxes_df
-
     def __getitem__(
         self, idx: int
     ) -> Union[
@@ -259,6 +252,8 @@ class ReflacxDataset(data.Dataset):
         data: pd.Series = self.df.iloc[idx]
 
         # convert images to rgb
+
+        # it's necesary to load the image, becasue it will be used to run the transform.
         img: Image = Image.open(data["image_path"]).convert("RGB")
 
         if self.with_bboxes:
@@ -342,9 +337,7 @@ class ReflacxDataset(data.Dataset):
             ).astype(np.float32)
 
             target["fixation-generation"] = {"heatmaps": fix}
-            # img_t, target, fix_t = self.transforms(img, target, fix)
-            # target["fixations"] = fix_t
-        # else:
+
         input_dict = {}
 
         if self.with_clinical:
@@ -379,14 +372,11 @@ class ReflacxDataset(data.Dataset):
                     for c in self.clinical_categorical_cols
                 }
 
-                # clinical_cat = torch.tensor(
-                #     np.array(data[self.clinical_categorical_cols], dtype=int)
-                # )
-
             input_dict.update({"clinical": {"cat": clinical_cat, "num": clinical_num}})
 
         img_t, target = self.transforms(img, target)
 
+        # if self.with_xrays:
         input_dict.update({"xrays": {"images": img_t}})
 
         return input_dict, target
@@ -405,14 +395,6 @@ class ReflacxDataset(data.Dataset):
 
         inputs = list(inputs)
         targets = list(targets)
-
-        # images = [t["image"] for t in inputs]
-        # inputs = [target_processing(i) for i in inputs]
-        # targets = [target_processing(t) for t in targets]
-
-        # by doing this, each source and task has their own dict to feed into models or functions.
-        # inputs = chain_map(inputs)
-        # targets = chain_map(targets)
 
         return inputs, targets
 

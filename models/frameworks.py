@@ -72,19 +72,8 @@ class ExtractFusePerform(nn.Module):
     #                     )
 
     def prepare(self, x, targets):
-        # first, do the mapping
-
-        # for k in self.feature_extractors.keys():
-        #     x[k] = chain_map(x[k])
-
-        # for k in self.task_performers.keys():
-        #     targets[k] = chain_map(targets[k])
-
         if "lesion-detection" in self.task_performers.keys():
             x, targets = self.lesion_detetion_prepare(x, targets)
-
-        # for k in [k for k in self.task_performers.keys() if k != "lesion-detection"]:
-        #     targets[k] = chain_map(targets[k])
 
         return x, targets
 
@@ -103,16 +92,13 @@ class ExtractFusePerform(nn.Module):
             val = x_i['xrays']['images'].shape[-2:]
             assert len(val) == 2
             original_image_sizes.append((val[0], val[1]))
-
     
         # assign image sizes
         for i, (b_i, o_s) in enumerate(zip(batched_images, original_image_sizes)):
             x[i]['xrays']['images'] = b_i
             targets[i]['lesion-detection']['original_image_sizes'] = o_s
 
-
         self.task_performers["lesion-detection"].valid_bbox([t["lesion-detection"] for t in targets])
-
         # targets["lesion-detection"] = chain_map(targets["lesion-detection"])
         # targets["lesion-detection"]["original_image_sizes"] = original_image_sizes
         # targets["lesion-detection"]["image_list_image_sizes"] = image_list.image_sizes

@@ -12,15 +12,15 @@ from pycocotools.coco import COCO
 import data.transforms as T
 
 
-def get_lesion_detection_cocos(train_dataloader, val_dataloader, test_dataloader):
+def get_cocos(source_name, task_name, train_dataloader, val_dataloader, test_dataloader):
     train_coco = get_coco_api_from_dataset(
-        train_dataloader.dataset, source_name="xrays", task_name="lesion-detection"
+        train_dataloader.dataset, source_name=source_name, task_name=task_name,
     )
     val_coco = get_coco_api_from_dataset(
-        val_dataloader.dataset, source_name="xrays", task_name="lesion-detection"
+        val_dataloader.dataset, source_name=source_name, task_name=task_name,
     )
     test_coco = get_coco_api_from_dataset(
-        test_dataloader.dataset, source_name="xrays", task_name="lesion-detection"
+        test_dataloader.dataset, source_name=source_name, task_name=task_name,
     )
     return train_coco, val_coco, test_coco
 

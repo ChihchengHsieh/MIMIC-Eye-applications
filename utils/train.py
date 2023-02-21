@@ -1,4 +1,6 @@
-import torch, os, pickle
+import torch
+import os
+import pickle
 
 from torch.optim.optimizer import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler, ReduceLROnPlateau, MultiStepLR
@@ -7,7 +9,7 @@ from models.setup import ModelSetup
 from models.dynamic_loss import DynamicWeightedLoss
 
 from .coco_eval import get_eval_params_dict
-from .coco_utils import get_lesion_detection_cocos
+from .coco_utils import get_cocos
 
 from datetime import datetime
 
@@ -84,6 +86,8 @@ def print_params_setup(model):
 
 
 def get_coco_eval_params(
+        source_name,
+        task_name,
     train_dataloader,
     val_dataloader,
     test_dataloader,
@@ -107,8 +111,9 @@ def get_coco_eval_params(
         eval_params_dict = save_dict["eval_params_dict"]
 
     else:
-        train_coco, val_coco, test_coco = get_lesion_detection_cocos(
-            train_dataloader, val_dataloader, test_dataloader
+        train_coco, val_coco, test_coco = get_cocos(
+            source_name=source_name, task_name=task_name,
+            train_dataloader=train_dataloader,  val_dataloader=val_dataloader, test_dataloader=test_dataloader,
         )
 
         eval_params_dict = get_eval_params_dict(
@@ -138,6 +143,6 @@ def get_dynamic_loss(loss_keys, device):
 def get_params(model, dynamic_loss_weight):
     params = [p for p in model.parameters() if p.requires_grad]
     if dynamic_loss_weight:
-        params += [p for p in dynamic_loss_weight.parameters() if p.requires_grad]
+        params += [p for p in dynamic_loss_weight.parameters()
+                   if p.requires_grad]
     return params
-
