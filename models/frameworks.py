@@ -6,8 +6,11 @@ from torch import nn
 import torch
 
 from data.helpers import map_target_to_device
+from data.strs import SourceStrs, TaskStrs
 from data.utils import chain_map
 from models.components.general import map_labels
+from models.components.rcnn import EyeRCNNTransform
+from models.setup import ModelSetup
 
 
 class ExtractFusePerform(nn.Module):
@@ -16,9 +19,14 @@ class ExtractFusePerform(nn.Module):
     """
 
     def __init__(
-        self, feature_extractors: dict, fusor: nn.Module, task_performers: dict,
+        self,
+        setup: ModelSetup,
+        feature_extractors: dict,
+        fusor: nn.Module,
+        task_performers: dict,
     ) -> None:  # expect the feature extractor be dictionary
         super().__init__()
+        self.setup = setup
         self.feature_extractors = feature_extractors
         self.task_performers = task_performers
         self.fusor = fusor
@@ -33,10 +41,7 @@ class ExtractFusePerform(nn.Module):
         # extract feature maps # doesn't allow the feature extractors created but not used.
 
         feature_maps = OrderedDict(
-            {
-                k: self.feature_extractors[k](x)
-                for k in self.feature_extractors.keys()
-            }
+            {k: self.feature_extractors[k](x) for k in self.feature_extractors.keys()}
         )
 
         # k is the task name or extractor name.
@@ -72,8 +77,29 @@ class ExtractFusePerform(nn.Module):
     #                     )
 
     def prepare(self, x, targets):
-        if "lesion-detection" in self.task_performers.keys():
-            x, targets = self.lesion_detetion_prepare(x, targets)
+        if SourceStrs.XRAYS in self.feature_extractors.keys():
+            if TaskStrs.LESION_DETECTION in self.task_performers.keys():
+                x, targets = self.lesion_detetion_prepare(x, targets)
+            else:
+                image_mean = [0.485, 0.456, 0.406]
+                image_std = [0.229, 0.224, 0.225]
+                eye_transform = EyeRCNNTransform(
+                    obj_det_task_name=None,
+                    heatmap_task_name=TaskStrs.FIXATION_GENERATION,
+                    image_mean=image_mean,
+                    image_std=image_std,
+                    fixed_size=[self.setup.image_size,self.setup.image_size],
+                )
+                x, targets = self.image_transform(x, targets, eye_transform)
+        return x, targets
+
+    def image_transform(self, x, targets, eye_transform):
+        batched_images, _ = eye_transform(
+            [i["xrays"]["images"] for i in x], targets
+        )
+
+        for i, b_i in enumerate(batched_images):
+            x[i]["xrays"]["images"] = b_i
 
         return x, targets
 
@@ -83,26 +109,28 @@ class ExtractFusePerform(nn.Module):
 
         # need to check how to involve fixations here.
 
-        batched_images, targets = self.task_performers["lesion-detection"].transform(
-            [i["xrays"]["images"] for i in x], targets
-        )
+        batched_images, targets = self.task_performers[
+            TaskStrs.LESION_DETECTION
+        ].transform([i["xrays"]["images"] for i in x], targets)
 
         original_image_sizes = []
         for x_i in x:
-            val = x_i['xrays']['images'].shape[-2:]
+            val = x_i["xrays"]["images"].shape[-2:]
             assert len(val) == 2
             original_image_sizes.append((val[0], val[1]))
-    
+
         # assign image sizes
         for i, (b_i, o_s) in enumerate(zip(batched_images, original_image_sizes)):
-            x[i]['xrays']['images'] = b_i
-            targets[i]['lesion-detection']['original_image_sizes'] = o_s
+            x[i]["xrays"]["images"] = b_i
+            targets[i]["lesion-detection"]["original_image_sizes"] = o_s
 
-        self.task_performers["lesion-detection"].valid_bbox([t["lesion-detection"] for t in targets])
-        # targets["lesion-detection"] = chain_map(targets["lesion-detection"])
-        # targets["lesion-detection"]["original_image_sizes"] = original_image_sizes
-        # targets["lesion-detection"]["image_list_image_sizes"] = image_list.image_sizes
-        # targets["lesion-detection"][
+        self.task_performers[TaskStrs.LESION_DETECTION].valid_bbox(
+            [t[TaskStrs.LESION_DETECTION] for t in targets]
+        )
+        # targets[TaskStrs.LESION_DETECTION] = chain_map(targets[TaskStrs.LESION_DETECTION])
+        # targets[TaskStrs.LESION_DETECTION]["original_image_sizes"] = original_image_sizes
+        # targets[TaskStrs.LESION_DETECTION]["image_list_image_sizes"] = image_list.image_sizes
+        # targets[TaskStrs.LESION_DETECTION][
         #     "image_list_tensors_shape"
         # ] = image_list.tensors.shape # (batch_size, 3, image_size, image_size)
 

@@ -3,6 +3,8 @@ from dataclasses import dataclass, field
 from typing import List
 import numpy as np
 
+from data.strs import TaskStrs
+
 
 @dataclass
 class ModelSetup:
@@ -201,4 +203,6 @@ class ModelSetup:
             "Support Devices_negbio",
         ]
     )
-
+    
+    performance_standard_task:str = TaskStrs.LESION_DETECTION
+    performance_standard_metric: str = "ap"

@@ -17,6 +17,7 @@ from torchvision.models.detection.faster_rcnn import (
 
 from torchvision.models.detection.transform import resize_boxes, resize_keypoints
 from torchvision.models.detection.roi_heads import paste_masks_in_image
+from data.strs import TaskStrs
 from models.components.general import Activation, map_inputs, map_labels
 
 from models.unet import UNetDecoder
@@ -241,11 +242,12 @@ class ObjectDetectionPerformer(GeneralTaskPerformer):
         image_std = [0.229, 0.224, 0.225]
 
         self.transform = EyeRCNNTransform(
-            self.params.task_name,
+            obj_det_task_name=self.params.task_name,
+            heatmap_task_name=TaskStrs.FIXATION_GENERATION,  # should separate this one to heatmap generation.
             # params.transform_min_size,
             # params.transform_max_size,
-            image_mean,
-            image_std,
+            image_mean=image_mean,
+            image_std=image_std,
             fixed_size=[params.image_size, params.image_size],
         )
 
@@ -297,7 +299,9 @@ class HeatmapGenerationPerformer(GeneralTaskPerformer):
 
         loss = self.loss_fn(
             output,
-            torch.stack([t[self.params.task_name]["heatmaps"] for t in targets], dim=0).float(),
+            torch.stack(
+                [t[self.params.task_name]["heatmaps"] for t in targets], dim=0
+            ).float(),
         )
 
         return {
@@ -365,7 +369,9 @@ class ImageClassificationPerformer(GeneralTaskPerformer):
         loss = self.loss_fn(
             # output, torch.stack([t["classifications"] for t in targets], dim=0).float()
             output,
-            torch.stack([t[self.params.task_name]["classifications"] for t in targets], dim=0).float(),
+            torch.stack(
+                [t[self.params.task_name]["classifications"] for t in targets], dim=0
+            ).float(),
         )
 
         return {

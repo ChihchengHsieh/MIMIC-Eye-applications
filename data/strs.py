@@ -6,4 +6,11 @@ class TaskStrs:
 
 class SourceStrs:
     XRAYS = "xrays"
-    CLINICAL = "CLINICAL"
+    CLINICAL = "clinical"
+
+
+class FusionStrs:
+    ElEMENTWISE_SUM = "element-wise sum"
+    HADAMARD_PRODUCT = "hadamard product"
+    NO_ACTION = "no-action"
+    CONCAT = "concat"

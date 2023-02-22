@@ -3,6 +3,7 @@ import math, sys, time, torch, torchvision
 from sklearn.metrics import accuracy_score, precision_score
 from typing import Dict, List, Tuple
 import torch.nn as nn
+from data.strs import TaskStrs
 from data.utils import chain_map
 from models.components.task_performers import (
     HeatmapGenerationPerformer,
@@ -117,7 +118,6 @@ def train_one_epoch(
     for data in metric_logger.log_every(data_loader, print_freq, header):
         inputs, targets = data_loader.dataset.prepare_input_from_data(data)
         inputs, targets = model.prepare(inputs, targets)
-
         inputs = map_every_thing_to_device(inputs, device)
         targets = map_every_thing_to_device(targets, device)
 
@@ -187,8 +187,8 @@ def train_one_epoch(
                     evaluators[k].update(res)
                 else:
                     evaluators[k].update(outputs[k]["outputs"], [t[k] for t in targets])
-            
-            model.evaluators = evaluators
+                
+                model.evaluators = evaluators
             # raise StopIteration()
 
     # tasks to perform evaluation (fixation-generation, negbio-classification, chexpert-classification)
@@ -266,6 +266,7 @@ def evaluate(
 
         if torch.cuda.is_available():
             torch.cuda.synchronize()
+
         model_time = time.time()
         outputs = model(inputs, targets=targets)
         # loss_dict = loss_multiplier(loss_dict)
@@ -311,8 +312,6 @@ def evaluate(
                 evaluators[k].update(outputs[k]["outputs"], [t[k] for t in targets])
             
             model.evaluators = evaluators
-
-        obj_dts = outputs["lesion-detection"]["outputs"]
 
         evaluator_time = time.time()
         evaluator_time = time.time() - evaluator_time

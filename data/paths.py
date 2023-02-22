@@ -27,7 +27,7 @@ class ReflacxFiles(Enum):
     Fixations = "fixations.csv"
     ChestBoundingBox = "chest_bounding_box.csv"
     TimestampsTranscription = "timestamps_transcription.csv"
-    Transcription = "transcription.txt"
+    Transcription = "transcription.txt" 
 
 class ReflacxReader():
     

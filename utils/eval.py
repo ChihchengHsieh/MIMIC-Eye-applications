@@ -4,6 +4,10 @@ import matplotlib.pyplot as plt
 from IPython.display import display
 from typing import List
 from collections import OrderedDict
+
+from sklearn.metrics import roc_auc_score
+
+from data.strs import TaskStrs
 from .coco_eval import (
     CocoEvaluator,
     external_summarize,
@@ -12,8 +16,9 @@ from .coco_eval import (
     external_get_num_tps,
 )
 import utils.print as print_f
-from models.load import  get_model_name, get_trained_model
+from models.load import get_model_name, get_trained_model
 from data.constants import DEFAULT_REFLACX_LABEL_COLS
+
 # from utils.plot import plot_losses, plot_train_val_evaluators
 from utils.train import num_params
 
@@ -119,7 +124,7 @@ def get_ap_ar_for_train_val(
 
 
 def save_iou_results(evaluator: CocoEvaluator, suffix: str, model_path: str):
-    os.makedirs("./eval_results",exist_ok=True)
+    os.makedirs("./eval_results", exist_ok=True)
 
     ap_ar_dict = OrderedDict(
         {thrs: [] for thrs in evaluator.coco_eval["bbox"].params.iouThrs}
@@ -331,8 +336,13 @@ def showModelOnDatasets(
 
     return fig
 
+
 def showModelsOnDatasets(
-    select_models, datasets, naming_map, disease="all", figsize=(10, 10),
+    select_models,
+    datasets,
+    naming_map,
+    disease="all",
+    figsize=(10, 10),
     score_thrs=0.05,
 ):
     """
@@ -342,23 +352,29 @@ def showModelsOnDatasets(
     NUM_COLORS = len(datasets)
 
     fig, axes = plt.subplots(
-        1 , len(select_models) , figsize=figsize, dpi=120, sharex=True, sharey=True ,squeeze=False,
+        1,
+        len(select_models),
+        figsize=figsize,
+        dpi=120,
+        sharex=True,
+        sharey=True,
+        squeeze=False,
     )
 
     fig.suptitle("Average Precision")
 
-    for c_i , select_model,in enumerate(select_models):
+    for c_i, select_model, in enumerate(select_models):
         all_models_eval_data = {}
         for dataset in datasets:
             with open(
                 os.path.join(
-                    "eval_results", f"{select_model.value}_{dataset}_{disease}_score_thrs{score_thrs}.pkl",
+                    "eval_results",
+                    f"{select_model.value}_{dataset}_{disease}_score_thrs{score_thrs}.pkl",
                 ),
                 "rb",
             ) as f:
                 eval_data = pickle.load(f)
                 all_models_eval_data[dataset] = eval_data
-
 
         ax = axes[0][c_i]
 
@@ -382,7 +398,6 @@ def showModelsOnDatasets(
     plt.pause(0.01)
 
     return fig
-
 
 
 def showModelOnScoreThrs(
@@ -458,6 +473,7 @@ def showModelOnScoreThrs(
 
     return fig
 
+
 # def plot_training_progress(trained_models, device):
 #     for trained_model in trained_models:
 #         _, train_info, _ = get_trained_model(
@@ -481,7 +497,6 @@ def showModelOnScoreThrs(
 #         plot_losses(train_info.train_data, train_info.val_data)
 
 
-
 # def print_num_params(trained_models, device):
 #     for trained_model in trained_models:
 #         model, train_info, _ = get_trained_model(
@@ -499,13 +514,8 @@ def showModelOnScoreThrs(
 #         print(f"| [{train_info.model_setup.name}] | #Params: [{num_params(model):,}] |")
 
 
-
-
 def get_mAP_mAR(
-    models,
-    datasets: List[str],
-    naming_map,
-    score_thrs: float = 0.05,
+    models, datasets: List[str], naming_map, score_thrs: float = 0.05,
 ):
 
     labels_cols = DEFAULT_REFLACX_LABEL_COLS + ["all"]
@@ -584,3 +594,84 @@ def get_mAP_mAR(
         )
 
         return merged_df
+
+
+def get_ap_ar_for_train_val(
+    train_evaluator: CocoEvaluator,
+    val_evaluator: CocoEvaluator,
+    iouThr=0.5,
+    areaRng="all",
+    maxDets=10,
+):
+
+    train_ap_ar = get_ap_ar(
+        train_evaluator, iouThr=iouThr, areaRng=areaRng, maxDets=maxDets,
+    )
+
+    val_ap_ar = get_ap_ar(
+        val_evaluator, iouThr=iouThr, areaRng=areaRng, maxDets=maxDets,
+    )
+
+    return train_ap_ar, val_ap_ar
+
+
+def get_performance(all_tasks, evaluator, iouThr=0.5, areaRng="all", maxDets=10):
+
+    performance_dict = {}
+
+    if TaskStrs.LESION_DETECTION in all_tasks:
+        ap_ar = get_ap_ar(
+            evaluator[TaskStrs.LESION_DETECTION],
+            iouThr=iouThr,
+            areaRng=areaRng,
+            maxDets=maxDets,
+        )
+        performance_dict.update({TaskStrs.LESION_DETECTION: ap_ar})
+
+    if TaskStrs.FIXATION_GENERATION in all_tasks:
+        performance_dict.update(
+            {
+                TaskStrs.FIXATION_GENERATION: {
+                    "iou": evaluator[TaskStrs.FIXATION_GENERATION].get_iou()
+                }
+            }
+        )
+
+    if TaskStrs.CHEXPERT_CLASSIFICATION in all_tasks:
+        performance_dict.update({
+            TaskStrs.CHEXPERT_CLASSIFICATION: {
+            "auc": evaluator[
+                TaskStrs.CHEXPERT_CLASSIFICATION
+            ].get_clf_score(roc_auc_score)
+        }
+        })
+
+    if TaskStrs.NEGBIO_CLASSIFICATION in all_tasks:
+        performance_dict.update({
+            TaskStrs.NEGBIO_CLASSIFICATION: {
+            "auc": evaluator[
+                TaskStrs.NEGBIO_CLASSIFICATION
+            ].get_clf_score(roc_auc_score)
+        },
+        })
+
+    return performance_dict
+
+
+    # return {
+    #     "lesion-detection": train_ap_ar,
+    #     "fixation-generation": {
+    #         "iou": train_info.last_train_evaluator["fixation-generation"].get_iou()
+    #     },
+    #     "chexpert-classification": {
+    #         "auc": train_info.last_train_evaluator[
+    #             "chexpert-classification"
+    #         ].get_clf_score(roc_auc_score)
+    #     },
+    #     "negbio-classification": {
+    #         "auc": train_info.last_train_evaluator[
+    #             "negbio-classification"
+    #         ].get_clf_score(roc_auc_score)
+    #     },
+    # }
+

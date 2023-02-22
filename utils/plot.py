@@ -340,7 +340,7 @@ def plot_performance(performance, all_tasks, fig_title=None,) -> Figure:
             break
 
 
-    fig, axes = plt.subplots(current_idx, figsize=(10, 5*current_idx), dpi=80, sharex=True,)
+    fig, axes = plt.subplots(current_idx, figsize=(10, 5*current_idx), dpi=80, sharex=True, squeeze=False)
 
     if fig_title:
         fig.suptitle(f"{fig_title}")

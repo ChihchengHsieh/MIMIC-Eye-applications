@@ -18,6 +18,8 @@ from torchvision.models.detection.roi_heads import (
 
 from torchvision.models.detection.rpn import concat_box_prediction_layers
 
+from data.strs import TaskStrs
+
 
 @torch.jit.unused
 def _onnx_get_num_anchors_and_pre_nms_top_n(ob, orig_pre_nms_top_n):
@@ -250,9 +252,13 @@ class XAMIMatcher:
             # return torch.tensor([], device=device)
             # empty targets or proposals not supported during training
             if match_quality_matrix.shape[0] == 0:
-                raise ValueError("No ground-truth boxes available for one of the images during training")
+                raise ValueError(
+                    "No ground-truth boxes available for one of the images during training"
+                )
             else:
-                raise ValueError("No proposal boxes available for one of the images during training")
+                raise ValueError(
+                    "No proposal boxes available for one of the images during training"
+                )
 
         # match_quality_matrix is M (gt) x N (predicted)
         # Max over gt elements (dim 0) to find best gt candidate for each prediction
@@ -1072,6 +1078,7 @@ def _fake_cast_onnx(v: Tensor) -> float:
 
 def _resize_image_and_targets(
     image: Tensor,
+    heatmap_task_name: str,
     target_index: Optional[Dict[str, Tensor]] = None,
     fixed_size: Optional[Tuple[int, int]] = None,
 ) -> Tuple[Tensor, Optional[Dict[str, Tensor]]]:
@@ -1084,14 +1091,14 @@ def _resize_image_and_targets(
     if target_index is None:
         return image, target_index
 
-    if not target_index is None and "fixation-generation" in target_index:
-        fixations = target_index["fixation-generation"]["heatmaps"]
+    if not target_index is None and heatmap_task_name in target_index:
+        fixations = target_index[heatmap_task_name]["heatmaps"]
 
         fixations = torch.nn.functional.interpolate(
             fixations[:, None].float(), size=size,
         )[:, 0].byte()
 
-        target_index["fixation-generation"]["heatmaps"] = fixations
+        target_index[heatmap_task_name]["heatmaps"] = fixations
 
     return image, target_index
 
@@ -1151,7 +1158,8 @@ class EyeRCNNTransform(nn.Module):
 
     def __init__(
         self,
-        task_name: str,
+        obj_det_task_name: str,
+        heatmap_task_name: str,
         image_mean: List[float],
         image_std: List[float],
         size_divisible: int = 32,
@@ -1164,7 +1172,8 @@ class EyeRCNNTransform(nn.Module):
         self.size_divisible = size_divisible
         self.fixed_size = fixed_size
         self._skip_resize = kwargs.pop("_skip_resize", False)
-        self.task_name = task_name
+        self.obj_det_task_name = obj_det_task_name
+        self.heatmap_task_name = heatmap_task_name
 
     def forward(
         self, images: List[Tensor], targets: Optional[List[Dict[str, Tensor]]] = None
@@ -1185,7 +1194,7 @@ class EyeRCNNTransform(nn.Module):
 
         for i in range(len(images)):
             image = images[i]
-            target_index = targets[i]
+            target_index = targets[i] if targets is not None else None
 
             # target_index = (
             #     targets[i]
@@ -1210,7 +1219,9 @@ class EyeRCNNTransform(nn.Module):
             (image, target_index,) = self.resize(image, target_index)
 
             images[i] = image
-            targets[i] = target_index
+
+            if targets is not None:
+                targets[i] = target_index
 
             # if ("lesion-detection" in targets[i] or "fixation-generation" in targets[i]) and ((targets[i]['lesion-detection'] is not None ) ):
             #     targets["lesion-detection"][i] = lesion_detection_target_index
@@ -1262,7 +1273,10 @@ class EyeRCNNTransform(nn.Module):
         h, w = image.shape[-2:]
 
         (image, target_index,) = _resize_image_and_targets(
-            image, target_index, self.fixed_size,
+            image=image,
+            heatmap_task_name=self.heatmap_task_name,
+            target_index=target_index,
+            fixed_size=self.fixed_size,
         )
 
         if target_index is None:
@@ -1271,9 +1285,10 @@ class EyeRCNNTransform(nn.Module):
                 target_index,
             )
 
-        bbox = target_index[self.task_name]["boxes"]
-        bbox = resize_boxes(bbox, (h, w), image.shape[-2:])
-        target_index[self.task_name]["boxes"] = bbox
+        if self.obj_det_task_name in target_index:
+            bbox = target_index[self.obj_det_task_name]["boxes"]
+            bbox = resize_boxes(bbox, (h, w), image.shape[-2:])
+            target_index[self.obj_det_task_name]["boxes"] = bbox
 
         return image, target_index
 

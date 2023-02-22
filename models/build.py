@@ -1,6 +1,7 @@
 import torch.nn as nn
 
 from data.constants import DEFAULT_REFLACX_LABEL_COLS
+from data.strs import FusionStrs, SourceStrs, TaskStrs
 from .backbones import get_normal_backbone
 from .setup import ModelSetup
 from .components.feature_extractors import *
@@ -14,7 +15,7 @@ def create_model_from_setup(setup: ModelSetup):
 
     feature_map_dim = None
 
-    xrays_extractor_name = "xrays"
+    xrays_extractor_name = SourceStrs.XRAYS
     if xrays_extractor_name in setup.sources:
         backbone = get_normal_backbone(setup)
         image_extractor = ImageFeatureExtractor(
@@ -23,7 +24,7 @@ def create_model_from_setup(setup: ModelSetup):
         feature_extractors.update({xrays_extractor_name: image_extractor})
         feature_map_dim = [backbone.out_channels, backbone.out_dim, backbone.out_dim]
 
-    clinical_extractor_name = "clinical"
+    clinical_extractor_name = SourceStrs.CLINICAL
     if clinical_extractor_name in setup.sources:
         clnical_extractor = TabularFeatureExtractor(
             source_name=clinical_extractor_name,
@@ -37,21 +38,24 @@ def create_model_from_setup(setup: ModelSetup):
         )
         feature_extractors.update({clinical_extractor_name: clnical_extractor})
 
-    if setup.fusor == "no-action":
+    if setup.fusor == FusionStrs.NO_ACTION:
         fusor = NoActionFusor(out_channel=setup.backbone_out_channels)
-    elif setup.fusor == "element-wise sum":
+    elif setup.fusor == FusionStrs.ElEMENTWISE_SUM:
         fusor = ElementwiseSumFusor(out_channel=setup.backbone_out_channels)
-    elif setup.fusor == "hadamard product":
+    elif setup.fusor == FusionStrs.HADAMARD_PRODUCT:
         fusor = HadamardProductFusor(out_channel=setup.backbone_out_channels)
-    else:
+    elif setup.fusor == FusionStrs.CONCAT:
         fusor = ConcatenationFusor(
             in_channels=setup.backbone_out_channels * len(feature_extractors),
             out_channel=setup.backbone_out_channels,
         )
+    else:
+        ValueError(f"Unsupported fusion method: [{setup.fusor}]")
+    
 
     task_performers = nn.ModuleDict()
 
-    lesion_detection_task_name = "lesion-detection"
+    lesion_detection_task_name = TaskStrs.LESION_DETECTION
     if lesion_detection_task_name in setup.tasks:
         lesion_params = ObjectDetectionParameters(
             task_name=lesion_detection_task_name,
@@ -62,7 +66,7 @@ def create_model_from_setup(setup: ModelSetup):
         lesion_performer = ObjectDetectionPerformer(lesion_params)
         task_performers.update({lesion_params.task_name: lesion_performer})
 
-    fixation_generation_task_name = "fixation-generation"
+    fixation_generation_task_name = TaskStrs.FIXATION_GENERATION
     if fixation_generation_task_name in setup.tasks:
         fix_params = HeatmapGenerationParameters(
             task_name=fixation_generation_task_name,
@@ -72,7 +76,7 @@ def create_model_from_setup(setup: ModelSetup):
         fix_performer = HeatmapGenerationPerformer(params=fix_params,)
         task_performers.update({fix_params.task_name: fix_performer})
 
-    chexpert_classification_task_name = "chexpert-classification"
+    chexpert_classification_task_name = TaskStrs.CHEXPERT_CLASSIFICATION
     if chexpert_classification_task_name in setup.tasks:
         chexpert_clf_params = ImageClassificationParameters(
             task_name=chexpert_classification_task_name,
@@ -82,7 +86,7 @@ def create_model_from_setup(setup: ModelSetup):
         chexpert_clf = ImageClassificationPerformer(params=chexpert_clf_params,)
         task_performers.update({chexpert_classification_task_name: chexpert_clf})
 
-    negbio_classification_task_name = "negbio-classification"
+    negbio_classification_task_name = TaskStrs.NEGBIO_CLASSIFICATION
     if negbio_classification_task_name in setup.tasks:
         negbio_clf_params = ImageClassificationParameters(
             task_name=negbio_classification_task_name,
@@ -93,6 +97,7 @@ def create_model_from_setup(setup: ModelSetup):
         task_performers.update({negbio_classification_task_name: negbio_clf})
 
     model = ExtractFusePerform(
+        setup=setup,
         feature_extractors=nn.ModuleDict(feature_extractors),
         fusor=fusor,
         task_performers=nn.ModuleDict(task_performers),

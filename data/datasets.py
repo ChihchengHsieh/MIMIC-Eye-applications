@@ -15,6 +15,7 @@ from typing import Callable, Dict, List, Tuple, Union
 from pathlib import Path
 from PIL import Image
 from copy import deepcopy
+from data.strs import SourceStrs, TaskStrs
 from data.utils import chain_map
 
 from models.setup import ModelSetup
@@ -63,11 +64,8 @@ class ReflacxDataset(data.Dataset):
         box_coord_cols: List[str] = DEFAULT_REFLACX_BOX_COORD_COLS,
         path_cols: List[str] = DEFAULT_REFLACX_PATH_COLS,
         spreadsheets_folder=SPREADSHEET_FOLDER,
-
-        with_xrays: bool =True,
+        with_xrays: bool = True,
         with_clincal: bool = True,
-
-
         with_bboxes: bool = True,
         with_fixations: bool = True,
         with_chexpert: bool = True,
@@ -96,9 +94,9 @@ class ReflacxDataset(data.Dataset):
             self.clinical_numerical_cols = clinical_numerical_cols
             self.normalise_clinical_num = normalise_clinical_num
             self.clinical_categorical_cols = clinical_categorical_cols
-            
+
         self.with_xrays = with_xrays
-        
+
         self.with_chexpert = with_chexpert
         self.with_negbio = with_negbio
         self.with_bboxes = with_bboxes
@@ -110,8 +108,7 @@ class ReflacxDataset(data.Dataset):
         if self.with_fixations:
             self.fiaxtions_mode = fiaxtions_mode
 
-
-        # deciding which to df load 
+        # deciding which to df load
         self.df_path = (
             "reflacx_clinical_eye.csv" if self.with_clinical else "reflacx_eye.csv"
         )
@@ -122,6 +119,8 @@ class ReflacxDataset(data.Dataset):
         # get the splited group that we desire.
         if not self.split_str is None:
             self.df: pd.DataFrame = self.df[self.df["split"] == self.split_str]
+
+        self.replace_paths()
 
         # preprocessing data.
         self.preprocess_label()
@@ -139,11 +138,12 @@ class ReflacxDataset(data.Dataset):
     def preprocess_label(self,):
         self.df[self.all_disease_cols] = self.df[self.all_disease_cols].gt(0)
 
-    def replace_paths(self,): 
+    def replace_paths(self,):
         # replace the path with local mimic folder path.
         for p_col in self.path_cols:
             if p_col in self.df.columns:
                 if p_col == "bbox_paths":
+
                     def apply_bbox_paths_transform(input_paths_str: str) -> List[str]:
                         input_paths_list: List[str] = json.loads(input_paths_str)
                         replaced_path_list: List[str] = [
@@ -162,7 +162,6 @@ class ReflacxDataset(data.Dataset):
                     )
 
                 self.df[p_col] = self.df[p_col].apply(apply_fn)
-
 
     def load_image_array(self, image_path: str) -> np.ndarray:
         return np.asarray(Image.open(image_path))
@@ -256,6 +255,8 @@ class ReflacxDataset(data.Dataset):
         # it's necesary to load the image, becasue it will be used to run the transform.
         img: Image = Image.open(data["image_path"]).convert("RGB")
 
+        target = {}
+
         if self.with_bboxes:
 
             # Get bounding boxes.
@@ -285,26 +286,25 @@ class ReflacxDataset(data.Dataset):
 
             # prepare lesion-detection targets
 
-            target = {
-                "lesion-detection": {
-                    "boxes": bboxes,
-                    "labels": labels,
-                    "image_id": image_id,
-                    "area": area,
-                    "iscrowd": iscrowd,
-                    "dicom_id": data["dicom_id"],
-                    "image_path": data["image_path"],
-                }
+            target[TaskStrs.LESION_DETECTION] = {
+                "boxes": bboxes,
+                "labels": labels,
+                "image_id": image_id,
+                "area": area,
+                "iscrowd": iscrowd,
+                "dicom_id": data["dicom_id"],
+                "image_path": data["image_path"],
             }
+            
             # this has to be the same name as the task_performer.
 
         if self.with_chexpert:
-            target["chexpert-classification"] = {
+            target[TaskStrs.CHEXPERT_CLASSIFICATION] = {
                 "classifications": torch.tensor(data[self.chexpert_label_cols]) == 1
             }
 
         if self.with_negbio:
-            target["negbio-classification"] = {
+            target[TaskStrs.NEGBIO_CLASSIFICATION] = {
                 "classifications": torch.tensor(data[self.negbio_label_cols]) == 1
             }
 
@@ -336,7 +336,7 @@ class ReflacxDataset(data.Dataset):
                 (data["image_size_x"], data["image_size_y"]),
             ).astype(np.float32)
 
-            target["fixation-generation"] = {"heatmaps": fix}
+            target[TaskStrs.FIXATION_GENERATION] = {"heatmaps": fix}
 
         input_dict = {}
 
@@ -372,12 +372,14 @@ class ReflacxDataset(data.Dataset):
                     for c in self.clinical_categorical_cols
                 }
 
-            input_dict.update({"clinical": {"cat": clinical_cat, "num": clinical_num}})
+            input_dict.update(
+                {SourceStrs.CLINICAL: {"cat": clinical_cat, "num": clinical_num}}
+            )
 
         img_t, target = self.transforms(img, target)
 
         # if self.with_xrays:
-        input_dict.update({"xrays": {"images": img_t}})
+        input_dict.update({SourceStrs.XRAYS: {"images": img_t}})
 
         return input_dict, target
 
