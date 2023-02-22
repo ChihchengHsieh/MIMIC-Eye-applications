@@ -1,4 +1,5 @@
-import pickle, os
+import pickle
+import os
 import pandas as pd
 import matplotlib.pyplot as plt
 from IPython.display import display
@@ -131,7 +132,8 @@ def save_iou_results(evaluator: CocoEvaluator, suffix: str, model_path: str):
     )
 
     for thrs in evaluator.coco_eval["bbox"].params.iouThrs:
-        test_ap_ar = get_ap_ar(evaluator, areaRng="all", maxDets=10, iouThr=thrs,)
+        test_ap_ar = get_ap_ar(evaluator, areaRng="all",
+                               maxDets=10, iouThr=thrs,)
 
         ap_ar_dict[thrs].append(test_ap_ar)
 
@@ -590,7 +592,8 @@ def get_mAP_mAR(
         display(merged_df)
 
         merged_df.to_csv(
-            os.path.join(f"{eval_dataset}_dataset_class_ap_score_thrs_{score_thrs}.csv")
+            os.path.join(
+                f"{eval_dataset}_dataset_class_ap_score_thrs_{score_thrs}.csv")
         )
 
         return merged_df
@@ -631,47 +634,36 @@ def get_performance(all_tasks, evaluator, iouThr=0.5, areaRng="all", maxDets=10)
     if TaskStrs.FIXATION_GENERATION in all_tasks:
         performance_dict.update(
             {
-                TaskStrs.FIXATION_GENERATION: {
-                    "iou": evaluator[TaskStrs.FIXATION_GENERATION].get_iou()
-                }
+                TaskStrs.FIXATION_GENERATION: evaluator[TaskStrs.FIXATION_GENERATION].get_performance_dict(
+                )
+                # {
+                #     "iou": evaluator[TaskStrs.FIXATION_GENERATION].get_iou()
+                # }
             }
         )
 
     if TaskStrs.CHEXPERT_CLASSIFICATION in all_tasks:
         performance_dict.update({
-            TaskStrs.CHEXPERT_CLASSIFICATION: {
-            "auc": evaluator[
+            TaskStrs.CHEXPERT_CLASSIFICATION: evaluator[
                 TaskStrs.CHEXPERT_CLASSIFICATION
-            ].get_clf_score(roc_auc_score)
-        }
+            ].get_performance_dict()
+            #     {
+            #     "auc": evaluator[
+            #         TaskStrs.CHEXPERT_CLASSIFICATION
+            #     ].get_clf_score(roc_auc_score)
+            # }
         })
 
     if TaskStrs.NEGBIO_CLASSIFICATION in all_tasks:
         performance_dict.update({
-            TaskStrs.NEGBIO_CLASSIFICATION: {
-            "auc": evaluator[
+            TaskStrs.NEGBIO_CLASSIFICATION: evaluator[
                 TaskStrs.NEGBIO_CLASSIFICATION
-            ].get_clf_score(roc_auc_score)
-        },
+            ].get_performance_dict()
+            #     {
+            #     "auc": evaluator[
+            #         TaskStrs.NEGBIO_CLASSIFICATION
+            #     ].get_clf_score(roc_auc_score)
+            # },
         })
 
     return performance_dict
-
-
-    # return {
-    #     "lesion-detection": train_ap_ar,
-    #     "fixation-generation": {
-    #         "iou": train_info.last_train_evaluator["fixation-generation"].get_iou()
-    #     },
-    #     "chexpert-classification": {
-    #         "auc": train_info.last_train_evaluator[
-    #             "chexpert-classification"
-    #         ].get_clf_score(roc_auc_score)
-    #     },
-    #     "negbio-classification": {
-    #         "auc": train_info.last_train_evaluator[
-    #             "negbio-classification"
-    #         ].get_clf_score(roc_auc_score)
-    #     },
-    # }
-

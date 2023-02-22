@@ -22,7 +22,8 @@ from models.components.general import Activation, map_inputs, map_labels
 
 from models.unet import UNetDecoder
 from .rcnn import (
-    EyeRCNNTransform,
+    EyeHeatmapGenerationRCNNTransform,
+    EyeObjectDetectionRCNNTransform,
     XAMIAnchorGenerator,
     XAMIRegionProposalNetwork,
     XAMIRoIHeads,
@@ -241,7 +242,7 @@ class ObjectDetectionPerformer(GeneralTaskPerformer):
         image_mean = [0.485, 0.456, 0.406]
         image_std = [0.229, 0.224, 0.225]
 
-        self.transform = EyeRCNNTransform(
+        self.transform = EyeObjectDetectionRCNNTransform(
             obj_det_task_name=self.params.task_name,
             heatmap_task_name=TaskStrs.FIXATION_GENERATION,  # should separate this one to heatmap generation.
             # params.transform_min_size,
@@ -269,11 +270,12 @@ class ObjectDetectionPerformer(GeneralTaskPerformer):
 
 
 class HeatmapGenerationParameters(object):
-    def __init__(self, task_name, input_channel, decoder_channels) -> None:
+    def __init__(self, task_name, input_channel, decoder_channels, image_size) -> None:
         super().__init__()
         self.task_name = task_name
         self.input_channel = input_channel
         self.decoder_channels = decoder_channels
+        self.image_size = image_size
 
 
 class HeatmapGenerationPerformer(GeneralTaskPerformer):
@@ -291,6 +293,19 @@ class HeatmapGenerationPerformer(GeneralTaskPerformer):
             self.params.input_channel, self.params.decoder_channels
         )
         self.loss_fn = nn.BCEWithLogitsLoss()
+
+        image_mean = [0.485, 0.456, 0.406]
+        image_std = [0.229, 0.224, 0.225]
+
+        self.transform = EyeHeatmapGenerationRCNNTransform(
+            obj_det_task_name=self.params.task_name,
+            heatmap_task_name=TaskStrs.FIXATION_GENERATION,  # should separate this one to heatmap generation.
+            # params.transform_min_size,
+            # params.transform_max_size,
+            image_mean=image_mean,
+            image_std=image_std,
+            fixed_size=[params.image_size, params.image_size],
+        )
 
     def forward(self, fused, targets):
         z = fused["z"]

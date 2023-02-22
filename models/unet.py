@@ -49,8 +49,12 @@ class UNetDecoder(nn.Module):
         # combine decoder keyword arguments
         # kwargs = dict(use_batchnorm=use_batchnorm, attention_type=attention_type)
 
-        self.model = nn.Sequential(*[DecoderBlock(channels[i], channels[i+1])
-                                     for i in range(len(channels)-1)])
+        decoder_layers = [DecoderBlock(channels[i], channels[i+1])
+                          for i in range(len(channels)-1)]
+        decoder_layers += [nn.Conv2d(in_channels=channels[-1],
+                                     out_channels=1, kernel_size=3, stride=1, padding=1,)]
+
+        self.model = nn.Sequential(*decoder_layers)
 
     def forward(self, x):
 

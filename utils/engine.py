@@ -1,6 +1,10 @@
 import numpy as np
-import math, sys, time, torch, torchvision
-from sklearn.metrics import accuracy_score, precision_score
+import math
+import sys
+import time
+import torch
+import torchvision
+from sklearn.metrics import accuracy_score, precision_score, f1_score, recall_score, mean_absolute_error, mean_squared_error
 from typing import Dict, List, Tuple
 import torch.nn as nn
 from data.strs import TaskStrs
@@ -18,8 +22,6 @@ from .coco_eval import CocoEvaluator
 
 from . import detect_utils
 from data.helpers import (
-    map_2l_nest_dict_to_device,
-    map_dict_elements_to_device,
     map_every_thing_to_device,
 )
 
@@ -42,23 +44,73 @@ def get_iou_types(model: nn.Module, setup: ModelSetup) -> List[str]:
     return iou_types
 
 
+def get_iou_score(gt, pred):
+    intersection = np.logical_and(gt, pred)
+    union = np.logical_or(gt, pred)
+    iou_score = np.sum(intersection) / np.sum(union)
+    return iou_score
+
+
 class HeatmapGenerationEvaluator:
     def __init__(self) -> None:
-        self.preds = []
-        self.gts = []
+        # self.preds = []
+        # self.gts = []
+
+        self.ious = []
+        self.accuracies = []
+        self.f1_scores = []
+        self.precisions = []
+        self.recalls = []
+        self.mses = []
+        self.maes = []
 
     def update(self, outputs, targets):
-        for o in outputs:
-            self.preds.append(F.sigmoid(o).to(cpu_device).detach().numpy())
 
-        for t in targets:
-            self.gts.append(t['heatmaps'].to(cpu_device).detach().numpy())
+        for o, t in zip(outputs, targets):
+            pred = F.sigmoid(o).to(cpu_device).detach().numpy()
+            gt = t['heatmaps'].to(cpu_device).detach().numpy()
+            
+            self.ious.append(get_iou_score(gt=np.array(
+                gt) > 0.5, pred=np.array(pred) > 0.5))
+            self.precisions.append(precision_score(
+                np.array(gt).reshape(-1) > 0.5, (np.array(pred) > 0.5).reshape(-1)))
+            self.accuracies.append(accuracy_score(
+                np.array(gt).reshape(-1) > 0.5, (np.array(pred) > 0.5).reshape(-1)))
+            self.f1_scores.append(
+                f1_score(np.array(gt).reshape(-1) > 0.5, (np.array(pred) > 0.5).reshape(-1)))
+            self.recalls.append(recall_score(
+                np.array(gt).reshape(-1) > 0.5, (np.array(pred) > 0.5).reshape(-1)))
+            
+            ### Continues
+            self.mses.append(mean_squared_error(
+                np.array(gt).reshape(-1), np.array(pred).reshape(-1)))
+
+            self.maes.append(mean_absolute_error(
+                np.array(gt).reshape(-1), np.array(pred).reshape(-1)))
+
+        # for o in outputs:
+        #     self.preds.append(F.sigmoid(o).to(cpu_device).detach().numpy())
+
+        # for t in targets:
+        #     self.gts.append(t['heatmaps'].to(cpu_device).detach().numpy())
 
     def get_iou(self,):
-        intersection = np.logical_and(self.gts, self.preds)
-        union = np.logical_or(self.gts, self.preds)
-        iou_score = np.sum(intersection) / np.sum(union)
-        return iou_score 
+        return np.mean(self.ious)
+
+        # intersection = np.logical_and(self.gts, self.preds)
+        # union = np.logical_or(self.gts, self.preds)
+        # iou_score = np.sum(intersection) / np.sum(union)
+        # raise StopIteration()
+        # return iou_score
+
+    def get_performance_dict(self,):
+        return {
+            "iou": np.mean(self.ious),
+            "f1": np.mean(self.f1_scores),
+            "precision": np.mean(self.precisions),
+            "accuracy": np.mean(self.accuracies),
+            "recall": np.mean(self.recalls),
+        }
 
 
 class ImageClassificationEvaluator:
@@ -71,12 +123,22 @@ class ImageClassificationEvaluator:
             self.preds.append(F.sigmoid(o).to(cpu_device).detach().numpy())
 
         for t in targets:
-            self.gts.append(t['classifications'].to(cpu_device).detach().numpy())
-    
+            self.gts.append(t['classifications'].to(
+                cpu_device).detach().numpy())
+
     def get_clf_score(self, clf_score, has_threshold=None):
         if has_threshold:
-            return clf_score(np.array(self.gts).reshape(-1), (np.array(self.preds)>0.5).reshape(-1))
+            return clf_score(np.array(self.gts).reshape(-1), (np.array(self.preds) > has_threshold).reshape(-1))
         return clf_score(np.array(self.gts).reshape(-1), (np.array(self.preds)).reshape(-1))
+
+    def get_performance_dict(self,):
+        return {
+            "f1": self.get_clf_score(f1_score, has_threshold=0.5),
+            "precision": self.get_clf_score(precision_score, has_threshold=0.5),
+            "accuracy": self.get_clf_score(accuracy_score, has_threshold=0.5),
+            "recall": self.get_clf_score(recall_score, has_threshold=0.5),
+        }
+
 
 def train_one_epoch(
     setup: ModelSetup,
@@ -186,8 +248,9 @@ def train_one_epoch(
                     }
                     evaluators[k].update(res)
                 else:
-                    evaluators[k].update(outputs[k]["outputs"], [t[k] for t in targets])
-                
+                    evaluators[k].update(outputs[k]["outputs"], [
+                                         t[k] for t in targets])
+
                 model.evaluators = evaluators
             # raise StopIteration()
 
@@ -309,15 +372,17 @@ def evaluate(
                 }
                 evaluators[k].update(res)
             else:
-                evaluators[k].update(outputs[k]["outputs"], [t[k] for t in targets])
-            
+                evaluators[k].update(outputs[k]["outputs"], [
+                                     t[k] for t in targets])
+
             model.evaluators = evaluators
 
         evaluator_time = time.time()
         evaluator_time = time.time() - evaluator_time
 
         metric_logger.update(loss=losses_reduced, **loss_dict_reduced)
-        metric_logger.update(model_time=model_time, evaluator_time=evaluator_time)
+        metric_logger.update(model_time=model_time,
+                             evaluator_time=evaluator_time)
 
     # gather the stats from all processes
     metric_logger.synchronize_between_processes()
@@ -332,4 +397,3 @@ def evaluate(
     torch.set_num_threads(n_threads)
 
     return evaluators, metric_logger
-

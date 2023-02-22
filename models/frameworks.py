@@ -9,7 +9,7 @@ from data.helpers import map_target_to_device
 from data.strs import SourceStrs, TaskStrs
 from data.utils import chain_map
 from models.components.general import map_labels
-from models.components.rcnn import EyeRCNNTransform
+from models.components.rcnn import EyeImageRCNNTransform, EyeObjectDetectionRCNNTransform
 from models.setup import ModelSetup
 
 
@@ -77,20 +77,28 @@ class ExtractFusePerform(nn.Module):
     #                     )
 
     def prepare(self, x, targets):
-        if SourceStrs.XRAYS in self.feature_extractors.keys():
-            if TaskStrs.LESION_DETECTION in self.task_performers.keys():
+        if SourceStrs.XRAYS in self.feature_extractors:
+            # then we have to do something to the image.
+            has_transformed = False
+            if TaskStrs.LESION_DETECTION in self.task_performers:
                 x, targets = self.lesion_detetion_prepare(x, targets)
-            else:
+                has_transformed = True
+            
+            if TaskStrs.FIXATION_GENERATION in self.task_performers:
+                x, targets = self.fixation_generation_prepare(x, targets)
+                has_transformed = True
+
+            if not has_transformed :
                 image_mean = [0.485, 0.456, 0.406]
                 image_std = [0.229, 0.224, 0.225]
-                eye_transform = EyeRCNNTransform(
+                eye_transform = EyeImageRCNNTransform(
                     obj_det_task_name=None,
-                    heatmap_task_name=TaskStrs.FIXATION_GENERATION,
                     image_mean=image_mean,
                     image_std=image_std,
                     fixed_size=[self.setup.image_size,self.setup.image_size],
                 )
                 x, targets = self.image_transform(x, targets, eye_transform)
+                
         return x, targets
 
     def image_transform(self, x, targets, eye_transform):
@@ -102,6 +110,7 @@ class ExtractFusePerform(nn.Module):
             x[i]["xrays"]["images"] = b_i
 
         return x, targets
+
 
     def lesion_detetion_prepare(self, x, targets):
 
@@ -122,11 +131,42 @@ class ExtractFusePerform(nn.Module):
         # assign image sizes
         for i, (b_i, o_s) in enumerate(zip(batched_images, original_image_sizes)):
             x[i]["xrays"]["images"] = b_i
-            targets[i]["lesion-detection"]["original_image_sizes"] = o_s
+            targets[i][TaskStrs.LESION_DETECTION]["original_image_sizes"] = o_s
 
         self.task_performers[TaskStrs.LESION_DETECTION].valid_bbox(
             [t[TaskStrs.LESION_DETECTION] for t in targets]
         )
+        # targets[TaskStrs.LESION_DETECTION] = chain_map(targets[TaskStrs.LESION_DETECTION])
+        # targets[TaskStrs.LESION_DETECTION]["original_image_sizes"] = original_image_sizes
+        # targets[TaskStrs.LESION_DETECTION]["image_list_image_sizes"] = image_list.image_sizes
+        # targets[TaskStrs.LESION_DETECTION][
+        #     "image_list_tensors_shape"
+        # ] = image_list.tensors.shape # (batch_size, 3, image_size, image_size)
+
+        return x, targets
+    
+    def fixation_generation_prepare(self, x, targets):
+
+        # instead of putting these in the input x, we put it in the target of the object-detection.
+        # need to check how to involve fixations here.
+
+        batched_images, targets = self.task_performers[
+            TaskStrs.FIXATION_GENERATION
+        ].transform([i["xrays"]["images"] for i in x], targets)
+
+        # original_image_sizes = []
+        # for x_i in x:
+        #     val = x_i["xrays"]["images"].shape[-2:]
+        #     assert len(val) == 2
+        #     original_image_sizes.append((val[0], val[1]))
+
+        # # assign image sizes
+        for i, b_i in enumerate(batched_images):
+            x[i]["xrays"]["images"] = b_i
+
+        # self.task_performers[TaskStrs.LESION_DETECTION].valid_bbox(
+        #     [t[TaskStrs.LESION_DETECTION] for t in targets]
+        # )
         # targets[TaskStrs.LESION_DETECTION] = chain_map(targets[TaskStrs.LESION_DETECTION])
         # targets[TaskStrs.LESION_DETECTION]["original_image_sizes"] = original_image_sizes
         # targets[TaskStrs.LESION_DETECTION]["image_list_image_sizes"] = image_list.image_sizes

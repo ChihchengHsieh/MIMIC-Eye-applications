@@ -72,6 +72,7 @@ def create_model_from_setup(setup: ModelSetup):
             task_name=fixation_generation_task_name,
             input_channel=backbone.out_channels,
             decoder_channels=setup.decoder_channels,
+            image_size= setup.image_size,
         )  # the output should be just one channel.
         fix_performer = HeatmapGenerationPerformer(params=fix_params,)
         task_performers.update({fix_params.task_name: fix_performer})
