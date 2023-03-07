@@ -5,6 +5,7 @@ from collections import OrderedDict
 from typing import List
 import torch
 from torch import nn
+import torch.nn.functional as F
 
 from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
 from torchvision.models.detection.mask_rcnn import MaskRCNNPredictor, MaskRCNNHeads
@@ -292,7 +293,7 @@ class HeatmapGenerationPerformer(GeneralTaskPerformer):
         self.model = UNetDecoder(
             self.params.input_channel, self.params.decoder_channels
         )
-        self.loss_fn = nn.BCEWithLogitsLoss()
+        self.loss_fn = nn.BCELoss() # not logits loss
 
         image_mean = [0.485, 0.456, 0.406]
         image_std = [0.229, 0.224, 0.225]
@@ -311,8 +312,16 @@ class HeatmapGenerationPerformer(GeneralTaskPerformer):
         z = fused["z"]
 
         output = self.model(z)
+        output = F.sigmoid(output) # sigmoid 
+        # output = F.softmax(output.view(1, -1), dim=1) # .view(1, self.params.image_size, self.params.image_size)
 
         loss = self.loss_fn(
+            ### softmax
+            # output,
+            # torch.stack(
+            #     [t[self.params.task_name]["heatmaps"] for t in targets], dim=0
+            # ).float().view(1, -1) ,
+            ### sigmoid
             output,
             torch.stack(
                 [t[self.params.task_name]["heatmaps"] for t in targets], dim=0

@@ -1095,7 +1095,12 @@ def _resize_image_and_heatmaps(
 
         fixations = torch.nn.functional.interpolate(
             fixations[:, None].float(), size=size,
-        )[:, 0].byte()
+        )[:, 0]
+
+        if not fixations.max() == 0:
+            fixations = fixations/(fixations.max())# sigmoid
+        # if not fixations.sum() == 0:
+        #     fixations = fixations/fixations.sum() # softmax
 
         target_index[heatmap_task_name]["heatmaps"] = fixations
 
@@ -1104,7 +1109,6 @@ def _resize_image_and_heatmaps(
 
 def _resize_image(
     image: Tensor,
-    heatmap_task_name: str,
     target_index: Optional[Dict[str, Tensor]] = None,
     fixed_size: Optional[Tuple[int, int]] = None,
 ) -> Tuple[Tensor, Optional[Dict[str, Tensor]]]:
@@ -1115,20 +1119,6 @@ def _resize_image(
     )[0]
 
     return image, target_index
-
-
-    # if target_index is None:
-
-    # if not target_index is None and heatmap_task_name in target_index:
-    #     fixations = target_index[heatmap_task_name]["heatmaps"]
-
-    #     fixations = torch.nn.functional.interpolate(
-    #         fixations[:, None].float(), size=size,
-    #     )[:, 0].byte()
-
-    #     target_index[heatmap_task_name]["heatmaps"] = fixations
-
-    # return image, target_index
 
 
 def resize_keypoints(
@@ -1381,8 +1371,6 @@ class EyeObjectDetectionRCNNTransform(nn.Module):
         return format_string
 
 
-
-
 class EyeHeatmapGenerationRCNNTransform(nn.Module):
 
     """
@@ -1547,29 +1535,29 @@ class EyeHeatmapGenerationRCNNTransform(nn.Module):
 
         return batched_imgs
 
-    def postprocess(
-        self,
-        result: List[Dict[str, Tensor]],
-        image_shapes: List[Tuple[int, int]],
-        original_image_sizes: List[Tuple[int, int]],
-    ) -> List[Dict[str, Tensor]]:
-        if self.training:
-            return result
-        for i, (pred, im_s, o_im_s) in enumerate(
-            zip(result, image_shapes, original_image_sizes)
-        ):
-            boxes = pred["boxes"]
-            boxes = resize_boxes(boxes, im_s, o_im_s)
-            result[i]["boxes"] = boxes
-            if "masks" in pred:
-                masks = pred["masks"]
-                masks = paste_masks_in_image(masks, boxes, o_im_s)
-                result[i]["masks"] = masks
-            if "keypoints" in pred:
-                keypoints = pred["keypoints"]
-                keypoints = resize_keypoints(keypoints, im_s, o_im_s)
-                result[i]["keypoints"] = keypoints
-        return result
+    # def postprocess(
+    #     self,
+    #     result: List[Dict[str, Tensor]],
+    #     image_shapes: List[Tuple[int, int]],
+    #     original_image_sizes: List[Tuple[int, int]],
+    # ) -> List[Dict[str, Tensor]]:
+    #     if self.training:
+    #         return result
+    #     for i, (pred, im_s, o_im_s) in enumerate(
+    #         zip(result, image_shapes, original_image_sizes)
+    #     ):
+    #         boxes = pred["boxes"]
+    #         boxes = resize_boxes(boxes, im_s, o_im_s)
+    #         result[i]["boxes"] = boxes
+    #         if "masks" in pred:
+    #             masks = pred["masks"]
+    #             masks = paste_masks_in_image(masks, boxes, o_im_s)
+    #             result[i]["masks"] = masks
+    #         if "keypoints" in pred:
+    #             keypoints = pred["keypoints"]
+    #             keypoints = resize_keypoints(keypoints, im_s, o_im_s)
+    #             result[i]["keypoints"] = keypoints
+    #     return result
 
     def __repr__(self) -> str:
         format_string = f"{self.__class__.__name__}("
@@ -1686,11 +1674,6 @@ class EyeImageRCNNTransform(nn.Module):
                 target_index,
             )
 
-        if self.obj_det_task_name in target_index:
-            bbox = target_index[self.obj_det_task_name]["boxes"]
-            bbox = resize_boxes(bbox, (h, w), image.shape[-2:])
-            target_index[self.obj_det_task_name]["boxes"] = bbox
-
         return image, target_index
 
     # _onnx_batch_images() is an implementation of
@@ -1754,29 +1737,29 @@ class EyeImageRCNNTransform(nn.Module):
 
         return batched_imgs
 
-    def postprocess(
-        self,
-        result: List[Dict[str, Tensor]],
-        image_shapes: List[Tuple[int, int]],
-        original_image_sizes: List[Tuple[int, int]],
-    ) -> List[Dict[str, Tensor]]:
-        if self.training:
-            return result
-        for i, (pred, im_s, o_im_s) in enumerate(
-            zip(result, image_shapes, original_image_sizes)
-        ):
-            boxes = pred["boxes"]
-            boxes = resize_boxes(boxes, im_s, o_im_s)
-            result[i]["boxes"] = boxes
-            if "masks" in pred:
-                masks = pred["masks"]
-                masks = paste_masks_in_image(masks, boxes, o_im_s)
-                result[i]["masks"] = masks
-            if "keypoints" in pred:
-                keypoints = pred["keypoints"]
-                keypoints = resize_keypoints(keypoints, im_s, o_im_s)
-                result[i]["keypoints"] = keypoints
-        return result
+    # def postprocess(
+    #     self,
+    #     result: List[Dict[str, Tensor]],
+    #     image_shapes: List[Tuple[int, int]],
+    #     original_image_sizes: List[Tuple[int, int]],
+    # ) -> List[Dict[str, Tensor]]:
+    #     if self.training:
+    #         return result
+    #     for i, (pred, im_s, o_im_s) in enumerate(
+    #         zip(result, image_shapes, original_image_sizes)
+    #     ):
+    #         boxes = pred["boxes"]
+    #         boxes = resize_boxes(boxes, im_s, o_im_s)
+    #         result[i]["boxes"] = boxes
+    #         if "masks" in pred:
+    #             masks = pred["masks"]
+    #             masks = paste_masks_in_image(masks, boxes, o_im_s)
+    #             result[i]["masks"] = masks
+    #         if "keypoints" in pred:
+    #             keypoints = pred["keypoints"]
+    #             keypoints = resize_keypoints(keypoints, im_s, o_im_s)
+    #             result[i]["keypoints"] = keypoints
+    #     return result
 
     def __repr__(self) -> str:
         format_string = f"{self.__class__.__name__}("

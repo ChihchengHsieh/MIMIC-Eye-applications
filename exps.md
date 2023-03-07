@@ -41,3 +41,44 @@ Max AP on test: [0.2048]
 - [ ] implement clinical feature extractor (tabular)
 - [ ] implement another sequential feature extractor. (using RNN or transformer)
 
+
+
+
+## With fix [0.6788]
+``` python
+
+====================| Epoch [30] Done | It has took [283.78] min, Avg time: [567.57] sec/epoch | Estimate time for [30] epochs: [283.78] min | Epoch took [523] sec | Patience [5] |====================
+====================| Training Done, start testing! | [30] Epochs Training time: [17028] seconds, Avg time / Epoch: [567.6] seconds====================
+====================Best Performance model has been saved to: [val_chexpert-classification_auc_0_6562_test_chexpert-classification_auc_0_6610_epoch29_02-24-2023 09-40-30_chexpert_without_fix]====================
+Evaluation:  [ 0/29]  eta: 0:01:19  loss: 0.3232 (0.3232)  chexpert-classification_performer-image_classfication_classification_loss: 0.3232 (0.3232)  model_time: 1677196160.0000 (1677196157.3763)  evaluator_time: 0.0000 (0.0000)  time: 2.7360  data: 1.6313  max mem: 3242
+Evaluation:  [28/29]  eta: 0:00:02  loss: 0.2754 (0.2816)  chexpert-classification_performer-image_classfication_classification_loss: 0.2754 (0.2816)  model_time: 1677196160.0000 (1677196197.6145)  evaluator_time: 0.0000 (0.0000)  time: 2.7844  data: 1.7020  max mem: 3242
+Evaluation: Total time: 0:01:21 (2.8039 s / it)
+Averaged stats: loss: 0.2754 (0.2816)  chexpert-classification_performer-image_classfication_classification_loss: 0.2754 (0.2816)  model_time: 1677196160.0000 (1677196197.6145)  evaluator_time: 0.0000 (0.0000)
+====================The final model has been saved to: [val_chexpert-classification_auc_0_6156_test_chexpert-classification_auc_0_6034_epoch30_02-24-2023 09-50-36_chexpert_without_fix]====================
+
+
+
+========================================For Training [chexpert_with_fix]========================================
+ModelSetup(name='chexpert_with_fix', sources=['xrays'], tasks=['fixation-generation', 'chexpert-classification'], fusor='element-wise sum', decoder_channels=[128, 64, 32, 16, 8], lesion_label_cols=['Pulmonary edema', 'Enlarged cardiac silhouette', 'Consolidation', 'Atelectasis', 'Pleural abnormality'], save_early_stop_model=True, record_training_performance=True, backbone='mobilenet_v3', optimiser='sgd', lr=0.001, weight_decay=1e-09, image_backbone_pretrained=True, heatmap_backbone_pretrained=False, image_size=512, backbone_out_channels=64, batch_size=16, warmup_epochs=0, lr_scheduler='ReduceLROnPlateau', reduceLROnPlateau_factor=0.1, reduceLROnPlateau_patience=999, reduceLROnPlateau_full_stop=True, multiStepLR_milestones=100, multiStepLR_gamma=0.1, representation_size=64, mask_hidden_layers=64, using_fpn=False, use_mask=False, fuse_conv_channels=64, box_head_dropout_rate=0, fuse_depth=4, fusion_strategy='concat', fusion_residule=False, gt_in_train_till=0, measure_test=True, eval_freq=10, use_iobb=True, iou_thrs=array([0.5]), fiaxtions_mode='reporting', clinical_num=['age', 'temperature', 'heartrate', 'resprate', 'o2sat', 'sbp', 'dbp', 'acuity'], clinical_cat=['gender'], categorical_col_maps={'gender': 2}, clinical_cat_emb_dim=32, clinical_conv_channels=32, clinical_upsample='deconv', chexpert_label_cols=['Atelectasis_chexpert', 'Cardiomegaly_chexpert', 'Consolidation_chexpert', 'Edema_chexpert', 'Enlarged Cardiomediastinum_chexpert', 'Fracture_chexpert', 'Lung Lesion_chexpert', 'Lung Opacity_chexpert', 'No Finding_chexpert', 'Pleural Effusion_chexpert', 'Pleural Other_chexpert', 'Pneumonia_chexpert', 'Pneumothorax_chexpert', 'Support Devices_chexpert'], negbio_label_cols=['Atelectasis_negbio', 'Cardiomegaly_negbio', 'Consolidation_negbio', 'Edema_negbio', 'Enlarged Cardiomediastinum_negbio', 'Fracture_negbio', 'Lung Lesion_negbio', 'Lung Opacity_negbio', 'No Finding_negbio', 'Pleural Effusion_negbio', 'Pleural Other_negbio', 'Pneumonia_negbio', 'Pneumothorax_negbio', 'Support Devices_negbio'], performance_standard_task='chexpert-classification', performance_standard_metric='auc')
+================================================================================================================
+
+Best performance model has been saved to: [val_chexpert-classification_auc_0_6643_test_chexpert-classification_auc_0_6788_epoch29_02-24-2023 04-37-15_chexpert_with_fix]
+The final model has been saved to: [val_chexpert-classification_auc_0_6541_test_chexpert-classification_auc_0_6558_epoch30_02-24-2023 05-05-25_chexpert_with_fix]
+
+================================================================================================================
+```
+
+
+# Without fix [0.6562]
+
+```python
+
+========================================For Training [chexpert_without_fix]========================================
+ModelSetup(name='chexpert_without_fix', sources=['xrays'], tasks=['chexpert-classification'], fusor='element-wise sum', decoder_channels=[128, 64, 32, 16, 8], lesion_label_cols=['Pulmonary edema', 'Enlarged cardiac silhouette', 'Consolidation', 'Atelectasis', 'Pleural abnormality'], save_early_stop_model=True, record_training_performance=True, backbone='mobilenet_v3', optimiser='sgd', lr=0.001, weight_decay=1e-09, image_backbone_pretrained=True, heatmap_backbone_pretrained=False, image_size=512, backbone_out_channels=64, batch_size=16, warmup_epochs=0, lr_scheduler='ReduceLROnPlateau', reduceLROnPlateau_factor=0.1, reduceLROnPlateau_patience=999, reduceLROnPlateau_full_stop=True, multiStepLR_milestones=100, multiStepLR_gamma=0.1, representation_size=64, mask_hidden_layers=64, using_fpn=False, use_mask=False, fuse_conv_channels=64, box_head_dropout_rate=0, fuse_depth=4, fusion_strategy='concat', fusion_residule=False, gt_in_train_till=0, measure_test=True, eval_freq=10, use_iobb=True, iou_thrs=array([0.5]), fiaxtions_mode='reporting', clinical_num=['age', 'temperature', 'heartrate', 'resprate', 'o2sat', 'sbp', 'dbp', 'acuity'], clinical_cat=['gender'], categorical_col_maps={'gender': 2}, clinical_cat_emb_dim=32, clinical_conv_channels=32, clinical_upsample='deconv', chexpert_label_cols=['Atelectasis_chexpert', 'Cardiomegaly_chexpert', 'Consolidation_chexpert', 'Edema_chexpert', 'Enlarged Cardiomediastinum_chexpert', 'Fracture_chexpert', 'Lung Lesion_chexpert', 'Lung Opacity_chexpert', 'No Finding_chexpert', 'Pleural Effusion_chexpert', 'Pleural Other_chexpert', 'Pneumonia_chexpert', 'Pneumothorax_chexpert', 'Support Devices_chexpert'], negbio_label_cols=['Atelectasis_negbio', 'Cardiomegaly_negbio', 'Consolidation_negbio', 'Edema_negbio', 'Enlarged Cardiomediastinum_negbio', 'Fracture_negbio', 'Lung Lesion_negbio', 'Lung Opacity_negbio', 'No Finding_negbio', 'Pleural Effusion_negbio', 'Pleural Other_negbio', 'Pneumonia_negbio', 'Pneumothorax_negbio', 'Support Devices_negbio'], performance_standard_task='chexpert-classification', performance_standard_metric='auc')
+===================================================================================================================
+
+Best performance model has been saved to: [val_chexpert-classification_auc_0_6562_test_chexpert-classification_auc_0_6610_epoch29_02-24-2023 09-40-30_chexpert_without_fix]
+The final model has been saved to: [val_chexpert-classification_auc_0_6156_test_chexpert-classification_auc_0_6034_epoch30_02-24-2023 09-50-36_chexpert_without_fix]
+
+===================================================================================================================
+```
