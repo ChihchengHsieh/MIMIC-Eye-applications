@@ -7,6 +7,7 @@ class TaskStrs:
 class SourceStrs:
     XRAYS = "xrays"
     CLINICAL = "clinical"
+    FIXATIONS = "fixations"
 
 
 class FusionStrs:

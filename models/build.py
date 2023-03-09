@@ -18,10 +18,10 @@ def create_model_from_setup(setup: ModelSetup):
     xrays_extractor_name = SourceStrs.XRAYS
     if xrays_extractor_name in setup.sources:
         backbone = get_normal_backbone(setup)
-        image_extractor = ImageFeatureExtractor(
+        xray_extractor = ImageFeatureExtractor(
             source_name=xrays_extractor_name, backbone=backbone,
         )
-        feature_extractors.update({xrays_extractor_name: image_extractor})
+        feature_extractors.update({xrays_extractor_name: xray_extractor})
         feature_map_dim = [backbone.out_channels, backbone.out_dim, backbone.out_dim]
 
     clinical_extractor_name = SourceStrs.CLINICAL
@@ -38,6 +38,15 @@ def create_model_from_setup(setup: ModelSetup):
         )
         feature_extractors.update({clinical_extractor_name: clnical_extractor})
 
+    fixation_extractor_name = SourceStrs.FIXATIONS
+    if fixation_extractor_name in setup.sources:
+        backbone = get_normal_backbone(setup)
+        fixations_extractor = ImageFeatureExtractor(
+            source_name=fixation_extractor_name, backbone=backbone,
+        )
+        feature_extractors.update({fixation_extractor_name: fixations_extractor})
+        feature_map_dim = [backbone.out_channels, backbone.out_dim, backbone.out_dim]
+
     if setup.fusor == FusionStrs.NO_ACTION:
         fusor = NoActionFusor(out_channel=setup.backbone_out_channels)
     elif setup.fusor == FusionStrs.ElEMENTWISE_SUM:
@@ -51,7 +60,6 @@ def create_model_from_setup(setup: ModelSetup):
         )
     else:
         ValueError(f"Unsupported fusion method: [{setup.fusor}]")
-    
 
     task_performers = nn.ModuleDict()
 
@@ -59,7 +67,7 @@ def create_model_from_setup(setup: ModelSetup):
     if lesion_detection_task_name in setup.tasks:
         lesion_params = ObjectDetectionParameters(
             task_name=lesion_detection_task_name,
-            out_channels=image_extractor.backbone.out_channels,
+            out_channels=xray_extractor.backbone.out_channels,
             num_classes=len(setup.lesion_label_cols) + 1,
             image_size=setup.image_size,
         )

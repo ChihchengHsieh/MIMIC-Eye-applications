@@ -68,9 +68,11 @@ class ReflacxDataset(data.Dataset):
         with_clincal: bool = True,
         with_bboxes: bool = True,
         with_fixations: bool = True,
+        with_fixation_as_input: bool = True,
         with_chexpert: bool = True,
         with_negbio: bool = True,
-        fiaxtions_mode="normal",  # [silent, reporting, all]
+        fiaxtions_mode="reporting",  # [silent, reporting, all]
+        input_fiaxtions_mode = "reporting",
     ):
         # Data loading selections
 
@@ -96,7 +98,7 @@ class ReflacxDataset(data.Dataset):
             self.clinical_categorical_cols = clinical_categorical_cols
 
         self.with_xrays = with_xrays
-
+        
         self.with_chexpert = with_chexpert
         self.with_negbio = with_negbio
         self.with_bboxes = with_bboxes
@@ -107,6 +109,10 @@ class ReflacxDataset(data.Dataset):
         self.with_fixations: bool = with_fixations
         if self.with_fixations:
             self.fiaxtions_mode = fiaxtions_mode
+
+        self.with_fixations_as_input = with_fixation_as_input
+        if self.with_fixations_as_input:
+            self.input_fiaxtions_mode = input_fiaxtions_mode
 
         # deciding which to df load
         self.df_path = (
@@ -135,10 +141,14 @@ class ReflacxDataset(data.Dataset):
 
         super().__init__()
 
-    def preprocess_label(self,):
+    def preprocess_label(
+        self,
+    ):
         self.df[self.all_disease_cols] = self.df[self.all_disease_cols].gt(0)
 
-    def replace_paths(self,):
+    def replace_paths(
+        self,
+    ):
         # replace the path with local mimic folder path.
         for p_col in self.path_cols:
             if p_col in self.df.columns:
@@ -203,7 +213,10 @@ class ReflacxDataset(data.Dataset):
     def __len__(self) -> int:
         return len(self.df)
 
-    def generate_bboxes_df(self, ellipse_df: pd.DataFrame,) -> pd.DataFrame:
+    def generate_bboxes_df(
+        self,
+        ellipse_df: pd.DataFrame,
+    ) -> pd.DataFrame:
         boxes_df = ellipse_df[self.box_fix_cols]
 
         # relabel repetitive columns.
@@ -295,7 +308,7 @@ class ReflacxDataset(data.Dataset):
                 "dicom_id": data["dicom_id"],
                 "image_path": data["image_path"],
             }
-            
+
             # this has to be the same name as the task_performer.
 
         if self.with_chexpert:
@@ -339,6 +352,41 @@ class ReflacxDataset(data.Dataset):
             target[TaskStrs.FIXATION_GENERATION] = {"heatmaps": fix}
 
         input_dict = {}
+
+        if self.with_fixations_as_input:
+            # get fixations
+            # target["fixation_path"] = data["fixation_path"]
+            fiaxtion_df = pd.read_csv(data["fixation_path"])
+
+            if self.input_fiaxtions_mode != "normal":
+                utterance_path = os.path.join(
+                    os.path.dirname(data["fixation_path"]),
+                    "timestamps_transcription.csv",
+                )
+                utterance_df = pd.read_csv(utterance_path)
+                report_starting_time = utterance_df.iloc[0]["timestamp_start_word"]
+                if self.input_fiaxtions_mode == "reporting":
+                    fiaxtion_df = fiaxtion_df[
+                        fiaxtion_df["timestamp_start_fixation"] >= report_starting_time
+                    ]
+                elif self.input_fiaxtions_mode == "silent":
+                    fiaxtion_df = fiaxtion_df[
+                        fiaxtion_df["timestamp_start_fixation"] < report_starting_time
+                    ]
+                else:
+                    raise ValueError("Not supported fiaxtions mode.")
+
+            fix = get_heatmap(
+                get_fixations_dict_from_fixation_df(fiaxtion_df),
+                (data["image_size_x"], data["image_size_y"]),
+            ).astype(np.float32)
+
+            fix_t, target = self.transforms(fix, target)
+
+            input_dict.update(
+                {SourceStrs.FIXATIONS: {"images": fix_t}}
+            )
+        
 
         if self.with_clinical:
             clinical_num = None
@@ -409,7 +457,9 @@ class ReflacxDataset(data.Dataset):
     def get_image_path_from_dicom_id(self, dicom_id: str) -> List[str]:
         return self.df[self.df["dicom_id"] == dicom_id].iloc[0]["image_path"]
 
-    def preprocess_clinical_df(self,):
+    def preprocess_clinical_df(
+        self,
+    ):
         self.encoders_map: Dict[str, LabelEncoder] = {}
 
         # encode the categorical cols.
@@ -417,4 +467,3 @@ class ReflacxDataset(data.Dataset):
             le = LabelEncoder()
             self.df[col] = le.fit_transform(self.df[col])
             self.encoders_map[col] = le
-

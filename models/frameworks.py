@@ -81,11 +81,11 @@ class ExtractFusePerform(nn.Module):
             # then we have to do something to the image.
             has_transformed = False
             if TaskStrs.LESION_DETECTION in self.task_performers:
-                x, targets = self.lesion_detetion_prepare(x, targets)
+                x, targets = self.xray_lesion_detetion_prepare(x, targets)
                 has_transformed = True
             
             if TaskStrs.FIXATION_GENERATION in self.task_performers:
-                x, targets = self.fixation_generation_prepare(x, targets)
+                x, targets = self.xray_fixation_generation_prepare(x, targets)
                 has_transformed = True
 
             if not has_transformed :
@@ -98,21 +98,85 @@ class ExtractFusePerform(nn.Module):
                     fixed_size=[self.setup.image_size,self.setup.image_size],
                 )
                 x, targets = self.image_transform(x, targets, eye_transform)
+
+        if SourceStrs.FIXATIONS in self.feature_extractors:
+            # then we have to do something for the fixation heatmap.
+            has_transformed = False
+            if TaskStrs.LESION_DETECTION in self.task_performers:
+                x, targets = self.fixations_lesion_detetion_prepare(x, targets)
+                has_transformed = True
+            
+            if TaskStrs.FIXATION_GENERATION in self.task_performers:
+                x, targets = self.fixations_fixation_generation_prepare(x, targets)
+                has_transformed = True
+
+            if not has_transformed :
+                image_mean = [0.485, 0.456, 0.406]
+                image_std = [0.229, 0.224, 0.225]
+                fixation_transform = EyeImageRCNNTransform(
+                    obj_det_task_name=None,
+                    image_mean=image_mean,
+                    image_std=image_std,
+                    fixed_size=[self.setup.image_size,self.setup.image_size],
+                )
+                x, targets = self.fixation_transform(x, targets, fixation_transform)
                 
         return x, targets
 
     def image_transform(self, x, targets, eye_transform):
         batched_images, _ = eye_transform(
-            [i["xrays"]["images"] for i in x], targets
+            [i[SourceStrs.XRAYS]["images"] for i in x], targets
         )
 
         for i, b_i in enumerate(batched_images):
-            x[i]["xrays"]["images"] = b_i
+            x[i][SourceStrs.XRAYS]["images"] = b_i
+
+        return x, targets
+    
+    def fixation_transform(self, x, targets, eye_transform):
+        batched_images, _ = eye_transform(
+            [i[SourceStrs.FIXATIONS]["images"] for i in x], targets
+        )
+
+        for i, b_i in enumerate(batched_images):
+            x[i][SourceStrs.FIXATIONS]["images"] = b_i
+
+        return x, targets
+    
+    def fixations_lesion_detetion_prepare(self, x, targets):
+
+        # instead of putting these in the input x, we put it in the target of the object-detection.
+
+        # need to check how to involve fixations here.
+
+        batched_fixations, targets = self.task_performers[
+            TaskStrs.LESION_DETECTION
+        ].transform([i[SourceStrs.FIXATIONS]["images"] for i in x], targets)
+
+        original_image_sizes = []
+        for x_i in x:
+            val = x_i[SourceStrs.FIXATIONS]["images"].shape[-2:]
+            assert len(val) == 2
+            original_image_sizes.append((val[0], val[1]))
+
+        # assign image sizes
+        for i, (b_i, o_s) in enumerate(zip(batched_fixations, original_image_sizes)):
+            x[i][SourceStrs.FIXATIONS]["images"] = b_i
+            targets[i][TaskStrs.LESION_DETECTION]["original_image_sizes"] = o_s
+
+        self.task_performers[TaskStrs.LESION_DETECTION].valid_bbox(
+            [t[TaskStrs.LESION_DETECTION] for t in targets]
+        )
+        # targets[TaskStrs.LESION_DETECTION] = chain_map(targets[TaskStrs.LESION_DETECTION])
+        # targets[TaskStrs.LESION_DETECTION]["original_image_sizes"] = original_image_sizes
+        # targets[TaskStrs.LESION_DETECTION]["image_list_image_sizes"] = image_list.image_sizes
+        # targets[TaskStrs.LESION_DETECTION][
+        #     "image_list_tensors_shape"
+        # ] = image_list.tensors.shape # (batch_size, 3, image_size, image_size)
 
         return x, targets
 
-
-    def lesion_detetion_prepare(self, x, targets):
+    def xray_lesion_detetion_prepare(self, x, targets):
 
         # instead of putting these in the input x, we put it in the target of the object-detection.
 
@@ -120,17 +184,17 @@ class ExtractFusePerform(nn.Module):
 
         batched_images, targets = self.task_performers[
             TaskStrs.LESION_DETECTION
-        ].transform([i["xrays"]["images"] for i in x], targets)
+        ].transform([i[SourceStrs.XRAYS]["images"] for i in x], targets)
 
         original_image_sizes = []
         for x_i in x:
-            val = x_i["xrays"]["images"].shape[-2:]
+            val = x_i[SourceStrs.XRAYS]["images"].shape[-2:]
             assert len(val) == 2
             original_image_sizes.append((val[0], val[1]))
 
         # assign image sizes
         for i, (b_i, o_s) in enumerate(zip(batched_images, original_image_sizes)):
-            x[i]["xrays"]["images"] = b_i
+            x[i][SourceStrs.XRAYS]["images"] = b_i
             targets[i][TaskStrs.LESION_DETECTION]["original_image_sizes"] = o_s
 
         self.task_performers[TaskStrs.LESION_DETECTION].valid_bbox(
@@ -145,14 +209,14 @@ class ExtractFusePerform(nn.Module):
 
         return x, targets
     
-    def fixation_generation_prepare(self, x, targets):
 
+    def fixations_fixation_generation_prepare(self, x, targets):
         # instead of putting these in the input x, we put it in the target of the object-detection.
         # need to check how to involve fixations here.
 
-        batched_images, targets = self.task_performers[
+        batched_fixations, targets = self.task_performers[
             TaskStrs.FIXATION_GENERATION
-        ].transform([i["xrays"]["images"] for i in x], targets)
+        ].transform([i[SourceStrs.FIXATIONS]["images"] for i in x], targets)
 
         # original_image_sizes = []
         # for x_i in x:
@@ -161,8 +225,39 @@ class ExtractFusePerform(nn.Module):
         #     original_image_sizes.append((val[0], val[1]))
 
         # # assign image sizes
+        for i, b_i in enumerate(batched_fixations):
+            x[i][SourceStrs.FIXATIONS]["images"] = b_i
+
+        # self.task_performers[TaskStrs.LESION_DETECTION].valid_bbox(
+        #     [t[TaskStrs.LESION_DETECTION] for t in targets]
+        # )
+        # targets[TaskStrs.LESION_DETECTION] = chain_map(targets[TaskStrs.LESION_DETECTION])
+        # targets[TaskStrs.LESION_DETECTION]["original_image_sizes"] = original_image_sizes
+        # targets[TaskStrs.LESION_DETECTION]["image_list_image_sizes"] = image_list.image_sizes
+        # targets[TaskStrs.LESION_DETECTION][
+        #     "image_list_tensors_shape"
+        # ] = image_list.tensors.shape # (batch_size, 3, image_size, image_size)
+
+        return x, targets
+    
+    def xray_fixation_generation_prepare(self, x, targets):
+
+        # instead of putting these in the input x, we put it in the target of the object-detection.
+        # need to check how to involve fixations here.
+
+        batched_images, targets = self.task_performers[
+            TaskStrs.FIXATION_GENERATION
+        ].transform([i[SourceStrs.XRAYS]["images"] for i in x], targets)
+
+        # original_image_sizes = []
+        # for x_i in x:
+        #     val = x_i[SourceStrs.XRAYS]["images"].shape[-2:]
+        #     assert len(val) == 2
+        #     original_image_sizes.append((val[0], val[1]))
+
+        # # assign image sizes
         for i, b_i in enumerate(batched_images):
-            x[i]["xrays"]["images"] = b_i
+            x[i][SourceStrs.XRAYS]["images"] = b_i
 
         # self.task_performers[TaskStrs.LESION_DETECTION].valid_bbox(
         #     [t[TaskStrs.LESION_DETECTION] for t in targets]

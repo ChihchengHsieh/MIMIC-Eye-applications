@@ -39,6 +39,9 @@ class HorizontalFlipTransform(object):
         self.prob: float = prob
 
     def __call__(self, image: torch.Tensor, target: Dict) -> Tuple[torch.Tensor, Dict]:
+
+        return (image, target)
+    
         if random.random() < self.prob:
             _, width = image.shape[-2:]
             image = image.flip(-1)
