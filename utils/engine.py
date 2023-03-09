@@ -228,6 +228,13 @@ def train_one_epoch(
             if dynamic_loss_weight:
                 losses = dynamic_loss_weight(all_losses)
             else:
+                # enhance the rpn. (maybe lower this value later epoches if trainable.)
+                all_losses['lesion-detection_performer-object_detection_loss_box_reg'] *= 0.44
+                all_losses['lesion-detection_performer-object_detection_loss_classifier'] *= 0.47
+                all_losses['lesion-detection_performer-object_detection_loss_objectness'] *= 0.35
+                all_losses['lesion-detection_performer-object_detection_loss_rpn_box_reg'] *= 0.19
+
+                # all_losses['lesion-detection_performer-object_detection_loss_objectness'] *= 1e+2
                 losses = sum(loss for loss in all_losses.values())
 
         # reduce losses over all GPUs for logging purposes
