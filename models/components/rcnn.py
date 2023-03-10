@@ -985,9 +985,6 @@ class XAMIRoIHeads(nn.Module):
 
         result: List[Dict[str, torch.Tensor]] = []
 
-        print("================t============")
-        print(targets)
-
         losses = {}
         if targets:
             assert labels is not None and regression_targets is not None
@@ -996,14 +993,6 @@ class XAMIRoIHeads(nn.Module):
             )
 
             losses = {"loss_classifier": loss_classifier, "loss_box_reg": loss_box_reg}
-
-        print(class_logits)
-        print(labels)
-        print(box_regression)
-        print(regression_targets)
-        print(loss_classifier)
-        print(loss_box_reg)
-        raise StopIteration()
 
         pred_boxes, pred_scores, pred_labels = self.postprocess_detections(
             class_logits, box_regression, proposals, image_shapes
