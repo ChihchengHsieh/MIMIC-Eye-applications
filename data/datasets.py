@@ -815,7 +815,7 @@ class ReflacxDataset(data.Dataset):
         bboxes = torch.tensor(
             np.array(bboxes_df[self.box_coord_cols], dtype=float)
         )  # x1, y1, x2, y2
-        self.resize_boxes(boxes=bboxes, original_size=original_size, new_size=new_size)
+        bboxes = self.resize_boxes(boxes=bboxes, original_size=original_size, new_size=new_size)
         # resize the bb
         # Calculate area of boxes.
         area = (bboxes[:, 3] - bboxes[:, 1]) * (bboxes[:, 2] - bboxes[:, 0])

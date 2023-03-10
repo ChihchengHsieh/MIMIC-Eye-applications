@@ -215,7 +215,7 @@ def train_one_epoch(
             
     for data in metric_logger.log_every(data_loader, print_freq, header):
         inputs, targets = data_loader.dataset.prepare_input_from_data(data)
-        inputs, targets = model.prepare(inputs, targets)
+        # inputs, targets = model.prepare(inputs, targets)
         inputs = map_every_thing_to_device(inputs, device)
         targets = map_every_thing_to_device(targets, device)
 
