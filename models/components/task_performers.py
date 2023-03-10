@@ -137,6 +137,12 @@ class ObjectDetectionPerformer(GeneralTaskPerformer):
             z, proposals, scaled_image_sizes, targets,
         )
 
+        # print(detections)
+        # print(targets)
+        # print(detector_losses)
+
+        # raise StopIteration()
+
         detections = self.postprocess(
             detections,
             scaled_image_sizes,

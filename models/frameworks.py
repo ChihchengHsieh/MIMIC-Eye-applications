@@ -167,6 +167,8 @@ class ExtractFusePerform(nn.Module):
         self.task_performers[TaskStrs.LESION_DETECTION].valid_bbox(
             [t[TaskStrs.LESION_DETECTION] for t in targets]
         )
+
+
         # targets[TaskStrs.LESION_DETECTION] = chain_map(targets[TaskStrs.LESION_DETECTION])
         # targets[TaskStrs.LESION_DETECTION]["original_image_sizes"] = original_image_sizes
         # targets[TaskStrs.LESION_DETECTION]["image_list_image_sizes"] = image_list.image_sizes
@@ -200,6 +202,7 @@ class ExtractFusePerform(nn.Module):
         self.task_performers[TaskStrs.LESION_DETECTION].valid_bbox(
             [t[TaskStrs.LESION_DETECTION] for t in targets]
         )
+
         # targets[TaskStrs.LESION_DETECTION] = chain_map(targets[TaskStrs.LESION_DETECTION])
         # targets[TaskStrs.LESION_DETECTION]["original_image_sizes"] = original_image_sizes
         # targets[TaskStrs.LESION_DETECTION]["image_list_image_sizes"] = image_list.image_sizes

@@ -17,25 +17,56 @@ def get_dataloader_g(seed: int = 0):
     g.manual_seed(seed)
     return g
 
+# def get_datasets(
+#     dataset_params_dict: Dict,
+# ) -> Tuple[ReflacxDataset, ReflacxDataset, ReflacxDataset, ReflacxDataset]:
+
+#     detect_eval_dataset = ReflacxDataset(
+#         **{**dataset_params_dict,}, # , "dataset_mode": "unified"
+#         transforms=get_tensorise_h_flip_transform(train=False),
+#     )
+
+#     train_dataset = ReflacxDataset(
+#         **dataset_params_dict, split_str="train", transforms=get_tensorise_h_flip_transform(train=True), 
+#     )
+
+#     val_dataset = ReflacxDataset(
+#         **dataset_params_dict, split_str="val", transforms=get_tensorise_h_flip_transform(train=False),
+#     )
+
+#     test_dataset = ReflacxDataset(
+#         **dataset_params_dict, split_str="test", transforms=get_tensorise_h_flip_transform(train=False),
+#     )
+
+#     return detect_eval_dataset, train_dataset, val_dataset, test_dataset
+
+
 def get_datasets(
     dataset_params_dict: Dict,
 ) -> Tuple[ReflacxDataset, ReflacxDataset, ReflacxDataset, ReflacxDataset]:
 
     detect_eval_dataset = ReflacxDataset(
-        **{**dataset_params_dict,}, # , "dataset_mode": "unified"
-        transforms=get_tensorise_h_flip_transform(train=False),
+        **{
+            **dataset_params_dict,
+        },
     )
 
     train_dataset = ReflacxDataset(
-        **dataset_params_dict, split_str="train", transforms=get_tensorise_h_flip_transform(train=True), 
+        **dataset_params_dict,
+        split_str="train",
+        random_flip=True,
     )
 
     val_dataset = ReflacxDataset(
-        **dataset_params_dict, split_str="val", transforms=get_tensorise_h_flip_transform(train=False),
+        **dataset_params_dict,
+        split_str="val",
+        random_flip=False,
     )
 
     test_dataset = ReflacxDataset(
-        **dataset_params_dict, split_str="test", transforms=get_tensorise_h_flip_transform(train=False),
+        **dataset_params_dict,
+        split_str="test",
+        random_flip=False,
     )
 
     return detect_eval_dataset, train_dataset, val_dataset, test_dataset

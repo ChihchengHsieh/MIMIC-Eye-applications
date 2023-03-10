@@ -17,6 +17,7 @@ from typing import Dict, List, Tuple
 import torch.nn as nn
 from data.strs import TaskStrs
 from data.utils import chain_map
+from models.components.feature_extractors import ImageFeatureExtractor
 from models.components.task_performers import (
     HeatmapGenerationPerformer,
     ImageClassificationPerformer,
@@ -192,7 +193,6 @@ def train_one_epoch(
     evaluators = {}
     model.evaluators = evaluators
 
-
     if evaluate_on_run:
         for k, v in model.task_performers.items():
             if isinstance(v, ObjectDetectionPerformer):
@@ -206,6 +206,13 @@ def train_one_epoch(
 
     lr_scheduler = None
 
+    for e in model.feature_extractors.values():
+        if isinstance(e, ImageFeatureExtractor):
+            if epoch < setup.model_warmup_epochs:
+                e.fix_backbone_weights(True)
+            else:
+                e.fix_backbone_weights(False)
+            
     for data in metric_logger.log_every(data_loader, print_freq, header):
         inputs, targets = data_loader.dataset.prepare_input_from_data(data)
         inputs, targets = model.prepare(inputs, targets)
@@ -215,7 +222,9 @@ def train_one_epoch(
         with torch.cuda.amp.autocast(enabled=False):
             outputs = model(inputs, targets=targets)
             # loss_dict = loss_multiplier(loss_dict,epoch)
-
+            # print(outputs['lesion-detection']['outputs'])
+            # print(outputs['lesion-detection']['losses'])
+            # raise StopIteration()
             all_losses = {}
             for task in outputs.keys():
                 all_losses.update(
@@ -229,10 +238,14 @@ def train_one_epoch(
                 losses = dynamic_loss_weight(all_losses)
             else:
                 # enhance the rpn. (maybe lower this value later epoches if trainable.)
-                all_losses['lesion-detection_performer-object_detection_loss_box_reg'] *= 0.44
-                all_losses['lesion-detection_performer-object_detection_loss_classifier'] *= 0.47
-                all_losses['lesion-detection_performer-object_detection_loss_objectness'] *= 0.35
-                all_losses['lesion-detection_performer-object_detection_loss_rpn_box_reg'] *= 0.19
+                if epoch < setup.loss_warmup_epochs:
+                    all_losses['lesion-detection_performer-object_detection_loss_box_reg'] *= 0
+                    all_losses['lesion-detection_performer-object_detection_loss_classifier'] *= 0
+
+                # all_losses['lesion-detection_performer-object_detection_loss_box_reg'] *= 0.44
+                # all_losses['lesion-detection_performer-object_detection_loss_classifier'] *= 0.47
+                # all_losses['lesion-detection_performer-object_detection_loss_objectness'] *= 0.35
+                # all_losses['lesion-detection_performer-object_detection_loss_rpn_box_reg'] *= 0.19
 
                 # all_losses['lesion-detection_performer-object_detection_loss_objectness'] *= 1e+2
                 losses = sum(loss for loss in all_losses.values())
@@ -345,7 +358,7 @@ def evaluate(
 
     for data in metric_logger.log_every(data_loader, 100, header):
         inputs, targets = data_loader.dataset.prepare_input_from_data(data)
-        inputs, targets = model.prepare(inputs, targets)
+        # inputs, targets = model.prepare(inputs, targets)
         # inputs = map_dict_elements_to_device(inputs, device)
         # targets = [map_dict_elements_to_device(t, device) for t in targets]
         # clinical cat has a different structure.
