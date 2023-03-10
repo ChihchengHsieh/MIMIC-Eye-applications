@@ -119,7 +119,6 @@ def get_normal_backbone(
         backbone.out_channels = 1024
         backbone.out_dim = setup.image_size / 32
 
-
     else:
         raise Exception(f"Unsupported backbone {setup.backbone}")
 
