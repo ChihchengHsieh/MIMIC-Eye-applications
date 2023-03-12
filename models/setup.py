@@ -289,6 +289,7 @@ class ModelSetup:
 
     # L2 regulariser
     weight_decay: float = 0.05
+    sgb_momentum: float = 0.9
 
     #####################
     # Pretrained setup.
@@ -417,4 +418,4 @@ class ModelSetup:
     performance_standard_metric: str = "ap"
     random_flip: bool = True
 
-    use_dynamic_weight: bool = True
+    use_dynamic_weight: bool = False
