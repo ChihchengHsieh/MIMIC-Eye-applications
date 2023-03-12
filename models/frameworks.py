@@ -77,6 +77,7 @@ class ExtractFusePerform(nn.Module):
     #                     )
 
     def prepare(self, x, targets):
+        raise StopIteration("This part has been aborted.")
         if SourceStrs.XRAYS in self.feature_extractors:
             # then we have to do something to the image.
             has_transformed = False
