@@ -154,8 +154,6 @@ def _coco_remove_images_without_annotations(dataset, cat_list=None):
 
     dataset = torch.utils.data.Subset(dataset, ids)
     return dataset
-
-
 def convert_to_coco_api(ds, source_name, task_name):
     coco_ds = COCO()
     # annotation IDs need to start at 1, not 0, see torchvision issue #1530
@@ -167,20 +165,21 @@ def convert_to_coco_api(ds, source_name, task_name):
         # targets = ds.get_annotations(img_idx)
         # img, clinical_num, clinical_cat, targets = ds[img_idx]
         data = ds[img_idx]
-        img = data[0][source_name]["images"]
+        # img = data[0][source_name]["images"]
         targets = data[-1][task_name]
+        original_size = targets['original_image_sizes']
 
         image_id = targets["image_id"].item()
         img_dict = {}
         img_dict["id"] = image_id
-        img_dict["height"] = img.shape[-2]
-        img_dict["width"] = img.shape[-1]
+        img_dict["height"] = original_size[0]
+        img_dict["width"] = original_size[1]
         dataset["images"].append(img_dict)
-        bboxes = targets["boxes"]
+        bboxes = targets["unsized_boxes"]
         bboxes[:, 2:] -= bboxes[:, :2]
         bboxes = bboxes.tolist()
         labels = targets["labels"].tolist()
-        areas = targets["area"].tolist()
+        areas = targets["unsized_area"].tolist()
         iscrowd = targets["iscrowd"].tolist()
         if "masks" in targets:
             masks = targets["masks"]
@@ -210,6 +209,62 @@ def convert_to_coco_api(ds, source_name, task_name):
     coco_ds.dataset = dataset
     coco_ds.createIndex()
     return coco_ds
+
+
+# def convert_to_coco_api(ds, source_name, task_name):
+#     coco_ds = COCO()
+#     # annotation IDs need to start at 1, not 0, see torchvision issue #1530
+#     ann_id = 1
+#     dataset = {"images": [], "categories": [], "annotations": []}
+#     categories = set()
+#     for img_idx in range(len(ds)):
+#         # find better way to get target
+#         # targets = ds.get_annotations(img_idx)
+#         # img, clinical_num, clinical_cat, targets = ds[img_idx]
+#         data = ds[img_idx]
+#         img = data[0][source_name]["images"]
+#         targets = data[-1][task_name]
+
+#         image_id = targets["image_id"].item()
+#         img_dict = {}
+#         img_dict["id"] = image_id
+#         img_dict["height"] = img.shape[-2]
+#         img_dict["width"] = img.shape[-1]
+#         dataset["images"].append(img_dict)
+#         bboxes = targets["boxes"]
+#         bboxes[:, 2:] -= bboxes[:, :2]
+#         bboxes = bboxes.tolist()
+#         labels = targets["labels"].tolist()
+#         areas = targets["area"].tolist()
+#         iscrowd = targets["iscrowd"].tolist()
+#         if "masks" in targets:
+#             masks = targets["masks"]
+#             # make masks Fortran contiguous for coco_mask
+#             masks = masks.permute(0, 2, 1).contiguous().permute(0, 2, 1)
+#         if "keypoints" in targets:
+#             keypoints = targets["keypoints"]
+#             keypoints = keypoints.reshape(keypoints.shape[0], -1).tolist()
+#         num_objs = len(bboxes)
+#         for i in range(num_objs):
+#             ann = {}
+#             ann["image_id"] = image_id
+#             ann["bbox"] = bboxes[i]
+#             ann["category_id"] = labels[i]
+#             categories.add(labels[i])
+#             ann["area"] = areas[i]
+#             ann["iscrowd"] = iscrowd[i]
+#             ann["id"] = ann_id
+#             if "masks" in targets:
+#                 ann["segmentation"] = coco_mask.encode(masks[i].numpy())
+#             if "keypoints" in targets:
+#                 ann["keypoints"] = keypoints[i]
+#                 ann["num_keypoints"] = sum(k != 0 for k in keypoints[i][2::3])
+#             dataset["annotations"].append(ann)
+#             ann_id += 1
+#     dataset["categories"] = [{"id": i} for i in sorted(categories)]
+#     coco_ds.dataset = dataset
+#     coco_ds.createIndex()
+#     return coco_ds
 
 
 def get_coco_api_from_dataset(dataset, source_name, task_name):

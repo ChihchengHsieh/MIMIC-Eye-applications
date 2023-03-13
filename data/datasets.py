@@ -812,13 +812,15 @@ class ReflacxDataset(data.Dataset):
 
     def get_lesion_detection_labels(self, idx, data, original_size, new_size):
         bboxes_df = self.generate_bboxes_df(pd.read_csv(data["bbox_path"]))
-        bboxes = torch.tensor(
-            np.array(bboxes_df[self.box_coord_cols], dtype=float)
-        )  # x1, y1, x2, y2
+        bboxes = np.array(bboxes_df[self.box_coord_cols], dtype=float)
+          # x1, y1, x2, y2
+        unsized_boxes = bboxes
+        bboxes = torch.tensor(bboxes)
         bboxes = self.resize_boxes(boxes=bboxes, original_size=original_size, new_size=new_size)
         # resize the bb
         # Calculate area of boxes.
         area = (bboxes[:, 3] - bboxes[:, 1]) * (bboxes[:, 2] - bboxes[:, 0])
+        unsized_area = (unsized_boxes[:, 3] - unsized_boxes[:, 1]) * (unsized_boxes[:, 2] - unsized_boxes[:, 0])
         labels = torch.tensor(
             np.array(bboxes_df["label"].apply(lambda l: self.disease_to_idx(l))).astype(
                 int
@@ -840,6 +842,8 @@ class ReflacxDataset(data.Dataset):
             "dicom_id": data["dicom_id"],
             "image_path": data["image_path"],
             "original_image_sizes": original_size,
+            "unsized_boxes": unsized_boxes,
+            "unsized_area": unsized_area,
         }
 
     def __getitem__(

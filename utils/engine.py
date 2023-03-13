@@ -424,7 +424,7 @@ def evaluate(
             else:
                 evaluators[k].update(outputs[k]["outputs"], [t[k] for t in targets])
 
-            model.evaluators = evaluators
+            # model.evaluators = evaluators
 
         evaluator_time = time.time()
         evaluator_time = time.time() - evaluator_time
