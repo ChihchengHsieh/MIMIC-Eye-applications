@@ -39,11 +39,12 @@ class ExtractFusePerform(nn.Module):
         # x, targets = self.prepare(x, targets) # the prepare should be ran outside of this framework to optimise the memory usage.
 
         # extract feature maps # doesn't allow the feature extractors created but not used.
-        
+
         feature_maps = OrderedDict(
             {k: self.feature_extractors[k](x) for k in self.feature_extractors.keys()}
         )
 
+        self.feature_maps = feature_maps
         # k is the task name or extractor name.
 
         fused = self.fusor(feature_maps)
@@ -55,7 +56,7 @@ class ExtractFusePerform(nn.Module):
                 for k in self.task_performers.keys()
             }
         )
-
+        
         return outputs
 
     # def __input_checking(self, x: Dict, targets: List[Dict]):
