@@ -25,13 +25,12 @@ def get_optimiser(params, setup: ModelSetup) -> Optimizer:
     elif setup.optimiser == "sgd":
         print(f"Using SGD as optimizer with lr={setup.lr}")
         optimiser = torch.optim.SGD(
-            params, lr=setup.lr, momentum=setup.sgb_momentum, weight_decay=setup.weight_decay,
+            params, lr=setup.lr, momentum=0.9, weight_decay=setup.weight_decay,
         )
     else:
         raise Exception(f"Unsupported optimiser {setup.optimiser}")
 
     return optimiser
-
 
 def get_lr_scheduler(optimizer: Optimizer, setup: ModelSetup) -> _LRScheduler:
 

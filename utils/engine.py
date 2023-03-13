@@ -192,7 +192,6 @@ def train_one_epoch(
 
     evaluators = {}
 
-    lr_scheduler = None
     # if epoch == 1:
     #     print("Warming up the first epoch.")
     #     warmup_factor = 1.0 / 1000
@@ -211,6 +210,8 @@ def train_one_epoch(
                 evaluators[k] = ImageClassificationEvaluator()
             else:
                 raise ValueError(f"Task-{k} doesn't have an evaluator.")
+            
+    lr_scheduler = None
 
     for e in model.feature_extractors.values():
         if isinstance(e, ImageFeatureExtractor):
