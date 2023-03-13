@@ -192,13 +192,14 @@ def train_one_epoch(
 
     evaluators = {}
 
-    # if epoch == 1:
-    #     print("Warming up the first epoch.")
-    #     warmup_factor = 1.0 / 1000
-    #     warmup_iters = min(1000, len(data_loader) - 1)
-    #     lr_scheduler = torch.optim.lr_scheduler.LinearLR(
-    #         optimizer, start_factor=warmup_factor, total_iters=warmup_iters
-    #     )
+    lr_scheduler = None
+    if epoch == 1:
+        print("Warming up the first epoch.")
+        warmup_factor = 1.0 / 1000
+        warmup_iters = min(1000, len(data_loader) - 1)
+        lr_scheduler = torch.optim.lr_scheduler.LinearLR(
+            optimizer, start_factor=warmup_factor, total_iters=warmup_iters
+        )
 
     if evaluate_on_run:
         for k, v in model.task_performers.items():
@@ -211,8 +212,6 @@ def train_one_epoch(
             else:
                 raise ValueError(f"Task-{k} doesn't have an evaluator.")
             
-    lr_scheduler = None
-
     for e in model.feature_extractors.values():
         if isinstance(e, ImageFeatureExtractor):
             if epoch < setup.model_warmup_epochs:
