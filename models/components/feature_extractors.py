@@ -61,14 +61,25 @@ class ImageFeatureExtractor(GeneralFeatureExtractor):
     Extracting features maps from a given image, x.
     """
 
-    def __init__(self, source_name, backbone) -> None:
+    def __init__(self, source_name, backbone, fix_backbone=True) -> None:
         super().__init__("extractor-image")
         self.source_name = source_name
         self.backbone = backbone
-
+        self.fix_backbone = fix_backbone
     def forward(self, x):
         x = torch.stack([x_i[self.source_name]["images"] for x_i in x], dim=0,)
+
+        if self.fix_backbone:
+            if len(self.backbone) == 2:
+                x = self.backbone[0](x).detach()
+                return self.backbone[1](x)
+            else:
+                raise NotImplementedError("Not supported weights fixing method.")
         return self.backbone(x)
+    
+    def fix_backbone_weights(self, x):
+        self.fix_backbone= x
+        print(f"backbone weights fix status: {self.fix_backbone}")
 
 
 class TabularFeatureExtractor(GeneralFeatureExtractor):

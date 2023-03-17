@@ -1,9 +1,23 @@
 import numpy as np
-import math, sys, time, torch, torchvision
-from sklearn.metrics import accuracy_score, precision_score
+import math
+import sys
+import time
+import torch
+import torchvision
+from sklearn.metrics import (
+    accuracy_score,
+    precision_score,
+    f1_score,
+    recall_score,
+    mean_absolute_error,
+    mean_squared_error,
+    roc_auc_score,
+)
 from typing import Dict, List, Tuple
 import torch.nn as nn
+from data.strs import TaskStrs
 from data.utils import chain_map
+from models.components.feature_extractors import ImageFeatureExtractor
 from models.components.task_performers import (
     HeatmapGenerationPerformer,
     ImageClassificationPerformer,
@@ -16,16 +30,13 @@ from models.setup import ModelSetup
 from .coco_eval import CocoEvaluator
 
 from . import detect_utils
-from data.helpers import (
-    map_2l_nest_dict_to_device,
-    map_dict_elements_to_device,
-    map_every_thing_to_device,
-)
+from data.helpers import map_every_thing_to_device
 
 from .pred import pred_thrs_check
 from torch.utils.data import DataLoader, Dataset
 from torch.optim.optimizer import Optimizer
 import torch.nn.functional as F
+
 cpu_device = torch.device("cpu")
 
 
@@ -41,23 +52,88 @@ def get_iou_types(model: nn.Module, setup: ModelSetup) -> List[str]:
     return iou_types
 
 
+def get_iou_score(gt, pred):
+    intersection = np.logical_and(gt, pred)
+    union = np.logical_or(gt, pred)
+    if np.sum(union) == 0:
+        return 1
+    iou_score = np.sum(intersection) / np.sum(union)
+    return iou_score
+
+
 class HeatmapGenerationEvaluator:
     def __init__(self) -> None:
-        self.preds = []
-        self.gts = []
+        # self.preds = []
+        # self.gts = []
+
+        self.ious = []
+        self.accuracies = []
+        self.f1_scores = []
+        self.precisions = []
+        self.recalls = []
+        self.mses = []
+        self.maes = []
 
     def update(self, outputs, targets):
-        for o in outputs:
-            self.preds.append(F.sigmoid(o).to(cpu_device).detach().numpy())
 
-        for t in targets:
-            self.gts.append(t['heatmaps'].to(cpu_device).detach().numpy())
+        for o, t in zip(outputs, targets):
+            pred = F.sigmoid(o).to(cpu_device).detach().numpy()
+            gt = t["heatmaps"].to(cpu_device).detach().numpy()
 
-    def get_iou(self,):
-        intersection = np.logical_and(self.gts, self.preds)
-        union = np.logical_or(self.gts, self.preds)
-        iou_score = np.sum(intersection) / np.sum(union)
-        return iou_score 
+            self.ious.append(
+                get_iou_score(gt=np.array(gt) > 0.5, pred=np.array(pred) > 0.5)
+            )
+            self.precisions.append(
+                precision_score(
+                    np.array(gt).reshape(-1) > 0.5, (np.array(pred) > 0.5).reshape(-1)
+                )
+            )
+            self.accuracies.append(
+                accuracy_score(
+                    np.array(gt).reshape(-1) > 0.5, (np.array(pred) > 0.5).reshape(-1)
+                )
+            )
+            self.f1_scores.append(
+                f1_score(
+                    np.array(gt).reshape(-1) > 0.5, (np.array(pred) > 0.5).reshape(-1)
+                )
+            )
+            self.recalls.append(
+                recall_score(
+                    np.array(gt).reshape(-1) > 0.5, (np.array(pred) > 0.5).reshape(-1)
+                )
+            )
+
+            self.gt = gt
+            self.pred = pred
+            
+            ### Continues
+            self.mses.append(
+                mean_squared_error(np.array(gt).reshape(-1), np.array(pred).reshape(-1))
+            )
+
+            self.maes.append(
+                mean_absolute_error(
+                    np.array(gt).reshape(-1), np.array(pred).reshape(-1)
+                )
+            )
+
+        # for o in outputs:
+        #     self.preds.append(F.sigmoid(o).to(cpu_device).detach().numpy())
+
+        # for t in targets:
+        #     self.gts.append(t['heatmaps'].to(cpu_device).detach().numpy())
+
+    def get_performance_dict(self,):
+        return {
+            "iou": np.mean(self.ious),
+            "f1": np.mean(self.f1_scores),
+            "precision": np.mean(self.precisions),
+            "accuracy": np.mean(self.accuracies),
+            "recall": np.mean(self.recalls),
+            "mse": np.mean(self.mses),
+            "mae": np.mean(self.maes),
+        }
 
 
 class ImageClassificationEvaluator:
@@ -70,12 +146,27 @@ class ImageClassificationEvaluator:
             self.preds.append(F.sigmoid(o).to(cpu_device).detach().numpy())
 
         for t in targets:
-            self.gts.append(t['classifications'].to(cpu_device).detach().numpy())
-    
+            self.gts.append(t["classifications"].to(cpu_device).detach().numpy())
+
     def get_clf_score(self, clf_score, has_threshold=None):
         if has_threshold:
-            return clf_score(np.array(self.gts).reshape(-1), (np.array(self.preds)>0.5).reshape(-1))
-        return clf_score(np.array(self.gts).reshape(-1), (np.array(self.preds)).reshape(-1))
+            return clf_score(
+                np.array(self.gts).reshape(-1),
+                (np.array(self.preds) > has_threshold).reshape(-1),
+            )
+        return clf_score(
+            np.array(self.gts).reshape(-1), (np.array(self.preds)).reshape(-1)
+        )
+
+    def get_performance_dict(self,):
+        return {
+            "f1": self.get_clf_score(f1_score, has_threshold=0.5),
+            "precision": self.get_clf_score(precision_score, has_threshold=0.5),
+            "accuracy": self.get_clf_score(accuracy_score, has_threshold=0.5),
+            "recall": self.get_clf_score(recall_score, has_threshold=0.5),
+            "auc": self.get_clf_score(roc_auc_score, has_threshold=0.5),
+        }
+
 
 def train_one_epoch(
     setup: ModelSetup,
@@ -101,6 +192,15 @@ def train_one_epoch(
 
     evaluators = {}
 
+    lr_scheduler = None
+    if epoch == 1:
+        print("Warming up the first epoch.")
+        warmup_factor = 1.0 / 1000
+        warmup_iters = min(1000, len(data_loader) - 1)
+        lr_scheduler = torch.optim.lr_scheduler.LinearLR(
+            optimizer, start_factor=warmup_factor, total_iters=warmup_iters
+        )
+
     if evaluate_on_run:
         for k, v in model.task_performers.items():
             if isinstance(v, ObjectDetectionPerformer):
@@ -111,20 +211,26 @@ def train_one_epoch(
                 evaluators[k] = ImageClassificationEvaluator()
             else:
                 raise ValueError(f"Task-{k} doesn't have an evaluator.")
-
-    lr_scheduler = None
-
+            
+    for e in model.feature_extractors.values():
+        if isinstance(e, ImageFeatureExtractor):
+            if epoch < setup.model_warmup_epochs:
+                e.fix_backbone_weights(True)
+            else:
+                e.fix_backbone_weights(False)
+            
     for data in metric_logger.log_every(data_loader, print_freq, header):
         inputs, targets = data_loader.dataset.prepare_input_from_data(data)
-        inputs, targets = model.prepare(inputs, targets)
-
+        # inputs, targets = model.prepare(inputs, targets)
         inputs = map_every_thing_to_device(inputs, device)
         targets = map_every_thing_to_device(targets, device)
 
         with torch.cuda.amp.autocast(enabled=False):
             outputs = model(inputs, targets=targets)
             # loss_dict = loss_multiplier(loss_dict,epoch)
-
+            # print(outputs['lesion-detection']['outputs'])
+            # print(outputs['lesion-detection']['losses'])
+            # raise StopIteration()
             all_losses = {}
             for task in outputs.keys():
                 all_losses.update(
@@ -137,6 +243,17 @@ def train_one_epoch(
             if dynamic_loss_weight:
                 losses = dynamic_loss_weight(all_losses)
             else:
+                # enhance the rpn. (maybe lower this value later epoches if trainable.)
+                if epoch < setup.loss_warmup_epochs:
+                    all_losses['lesion-detection_performer-object_detection_loss_box_reg'] *= 0
+                    all_losses['lesion-detection_performer-object_detection_loss_classifier'] *= 0
+
+                # all_losses['lesion-detection_performer-object_detection_loss_box_reg'] *= 0.44
+                # all_losses['lesion-detection_performer-object_detection_loss_classifier'] *= 0.47
+                # all_losses['lesion-detection_performer-object_detection_loss_objectness'] *= 0.35
+                # all_losses['lesion-detection_performer-object_detection_loss_rpn_box_reg'] *= 0.19
+
+                # all_losses['lesion-detection_performer-object_detection_loss_objectness'] *= 1e+2
                 losses = sum(loss for loss in all_losses.values())
 
         # reduce losses over all GPUs for logging purposes
@@ -187,8 +304,7 @@ def train_one_epoch(
                     evaluators[k].update(res)
                 else:
                     evaluators[k].update(outputs[k]["outputs"], [t[k] for t in targets])
-            
-            model.evaluators = evaluators
+
             # raise StopIteration()
 
     # tasks to perform evaluation (fixation-generation, negbio-classification, chexpert-classification)
@@ -248,7 +364,7 @@ def evaluate(
 
     for data in metric_logger.log_every(data_loader, 100, header):
         inputs, targets = data_loader.dataset.prepare_input_from_data(data)
-        inputs, targets = model.prepare(inputs, targets)
+        # inputs, targets = model.prepare(inputs, targets)
         # inputs = map_dict_elements_to_device(inputs, device)
         # targets = [map_dict_elements_to_device(t, device) for t in targets]
         # clinical cat has a different structure.
@@ -266,6 +382,7 @@ def evaluate(
 
         if torch.cuda.is_available():
             torch.cuda.synchronize()
+
         model_time = time.time()
         outputs = model(inputs, targets=targets)
         # loss_dict = loss_multiplier(loss_dict)
@@ -287,9 +404,7 @@ def evaluate(
                 obj_dts = outputs[k]["outputs"]
                 if not score_thres is None:
                     obj_dts = [
-                        pred_thrs_check(
-                            pred, data_loader.dataset, score_thres, device
-                        )
+                        pred_thrs_check(pred, data_loader.dataset, score_thres, device)
                         for pred in obj_dts
                     ]
 
@@ -302,17 +417,13 @@ def evaluate(
 
                 res = {
                     img_id.item(): dt
-                    for img_id, dt in zip(
-                        [t[k]["image_id"] for t in targets], obj_dts
-                    )
+                    for img_id, dt in zip([t[k]["image_id"] for t in targets], obj_dts)
                 }
                 evaluators[k].update(res)
             else:
                 evaluators[k].update(outputs[k]["outputs"], [t[k] for t in targets])
-            
-            model.evaluators = evaluators
 
-        obj_dts = outputs["lesion-detection"]["outputs"]
+            # model.evaluators = evaluators
 
         evaluator_time = time.time()
         evaluator_time = time.time() - evaluator_time
@@ -333,4 +444,3 @@ def evaluate(
     torch.set_num_threads(n_threads)
 
     return evaluators, metric_logger
-

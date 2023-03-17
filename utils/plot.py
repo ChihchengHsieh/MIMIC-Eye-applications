@@ -270,6 +270,24 @@ def plot_ap_ars(
 
     return fig
 
+def get_plot_performance(performance):
+    performance_for_plot = {}
+
+
+    for split, p_list in performance.items():
+        for p in p_list:
+            for task, task_metrics in p.items():
+                if task not in performance_for_plot:
+                    performance_for_plot[task] = {}
+                for metric in task_metrics:
+                    if metric not in performance_for_plot[task]:
+                        performance_for_plot[task][metric] = {}
+
+                    performance_for_plot[task][metric][split] = [p[task][metric] for p in performance[split] ]
+
+    return performance_for_plot
+
+
 
 def performance_list(all_tasks, performance, split):
     p_list = {}
@@ -289,7 +307,7 @@ def performance_list(all_tasks, performance, split):
     negbio_classification_str = "negbio-classification"
     if negbio_classification_str in all_tasks:
         p_list[negbio_classification_str] = {
-            "auc": [p["negbio-classification"]['auc'] for p in performance[split]]
+            "auc": [p["negbio-classification"]['auc'] for p in performance[split]] 
         }
 
     chexpert_classification_str = "chexpert-classification"
@@ -318,45 +336,63 @@ def plot_performance(performance, all_tasks, fig_title=None,) -> Figure:
     Plot both training and validation evaluator during training to check overfitting.
     """
 
-    all_p_list = {
-        "train": performance_list(
-            all_tasks=all_tasks, performance=performance, split="train"
-        ),
-        "val": performance_list(
-            all_tasks=all_tasks, performance=performance, split="val"
-        ),
-        "test": performance_list( all_tasks=all_tasks, performance=performance, split="test"),
-    }
+    # all_p_list = {
+    #     "train": performance_list(
+    #         all_tasks=all_tasks, performance=performance, split="train"
+    #     ),
+    #     "val": performance_list(
+    #         all_tasks=all_tasks, performance=performance, split="val"
+    #     ),
+    #     "test": performance_list( all_tasks=all_tasks, performance=performance, split="test"),
+    # }
     
+    # axes_idx_map = {}
+    # current_idx = 0
+
+    # for s, p_list in all_p_list.items():
+    #     if p_list is not None:
+    #         for t in all_tasks:
+    #             for k, v in p_list[t].items():
+    #                 axes_idx_map[f"{t}_{k}"] = current_idx
+    #                 current_idx += 1
+    #         break
+
+    performance_for_plot = get_plot_performance(performance=performance)
+
     axes_idx_map = {}
     current_idx = 0
+    for task, metrics in performance_for_plot.items():
+        for metric in metrics.keys():
+            axes_idx_map[f"{task}_{metric}"] = current_idx
+            current_idx += 1
 
-    for s, p_list in all_p_list.items():
-        if p_list is not None:
-            for t in all_tasks:
-                for k, v in p_list[t].items():
-                    axes_idx_map[f"{t}_{k}"] = current_idx
-                    current_idx += 1
-            break
-
-
-    fig, axes = plt.subplots(current_idx, figsize=(10, 5*current_idx), dpi=80, sharex=True,)
+    fig, axes = plt.subplots(current_idx, figsize=(10, 4*current_idx), dpi=80, sharex=True, squeeze=False)
+    axes = axes[:,0]
 
     if fig_title:
         fig.suptitle(f"{fig_title}")
 
-    current_idx = 0
-    for t in all_tasks:
-        for s, p_list in all_p_list.items():
-            if p_list is not None:
-                for k, v in p_list[t].items():
-                    axes[axes_idx_map[f"{t}_{k}"]].set_title(f"{t}_{k}")
-                    axes[axes_idx_map[f"{t}_{k}"]].plot(
-                        v, marker="o", label=s, color=split_to_colour[s],
+
+    for task, metrics in performance_for_plot.items():
+        for metric, split_p in metrics.items():
+            for split, p in split_p.items():
+                    axes[axes_idx_map[f"{task}_{metric}"]].set_title(f"{task}_{metric}")
+                    axes[axes_idx_map[f"{task}_{metric}"]].plot(
+                        p, marker="o", label=split, color=split_to_colour[split],
                     )
-                    axes[axes_idx_map[f"{t}_{k}"]].legend(loc="upper left")
-                    axes[axes_idx_map[f"{t}_{k}"]].set_xlabel("Epoch")
-                    current_idx += 1
+                    axes[axes_idx_map[f"{task}_{metric}"]].legend(loc="upper left")
+                    axes[axes_idx_map[f"{task}_{metric}"]].set_xlabel("Epoch")
+
+    # for t in all_tasks:
+    #     for s, p_list in all_p_list.items():
+    #         if p_list is not None:
+    #             for k, v in p_list[t].items():
+    #                 axes[axes_idx_map[f"{t}_{k}"]].set_title(f"{t}_{k}")
+    #                 axes[axes_idx_map[f"{t}_{k}"]].plot(
+    #                     v, marker="o", label=s, color=split_to_colour[s],
+    #                 )
+    #                 axes[axes_idx_map[f"{t}_{k}"]].legend(loc="upper left")
+    #                 axes[axes_idx_map[f"{t}_{k}"]].set_xlabel("Epoch")
 
     plt.plot()
     plt.pause(0.01)

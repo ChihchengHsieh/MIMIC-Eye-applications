@@ -51,10 +51,8 @@ class TrainingInfo:
         self.last_train_evaluator = None
         self.test_evaluator = None
 
-        self.best_val_ar = -1
-        self.best_val_ap = -1
-        self.best_ar_val_model_path = None
-        self.best_ap_val_model_path = None
+        self.best_val_performance = -1
+        self.best_performance_model_path = None
 
         self.final_model_path = None
         self.previous_ar_model = None
@@ -63,6 +61,7 @@ class TrainingInfo:
         self.timer = TrainingTimer()
         self.epoch = 0
         self.performance = {"train": [], "val": [], "test": []}
+        self.all_tasks = None
         super(TrainingInfo).__init__()
 
     def __str__(self):
@@ -71,9 +70,7 @@ class TrainingInfo:
 
         return (
             title + "\n" + str(self.model_setup) + "\n" + section_divider + "\n\n"
-            f"Best AP validation model has been saved to: [{self.best_ap_val_model_path}]"
-            + "\n"
-            f"Best AR validation model has been saved to: [{self.best_ar_val_model_path}]"
+            f"Best performance model has been saved to: [{self.best_performance_model_path}]"
             + "\n"
             f"The final model has been saved to: [{self.final_model_path}]"
             + "\n\n"

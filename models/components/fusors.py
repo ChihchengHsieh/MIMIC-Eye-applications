@@ -14,12 +14,12 @@ class GeneralFusor(nn.Module):
 class NoActionFusor(GeneralFusor):
     def __init__(self, out_channel) -> None:
         super().__init__(
-            name="fusor-no_action", out_channel=out_channel,
+            name="fusor-no_action",
+            out_channel=out_channel,
         )
 
     def forward(self, x):
-        assert len(
-            x.keys()) == 1, "should only have one element in no action fusor"
+        assert len(x.keys()) == 1, "should only have one element in no action fusor"
 
         out = x[list(x.keys())[0]]
         return {"z": out}
@@ -32,6 +32,7 @@ class ElementwiseSumFusor(GeneralFusor):
     def forward(self, x):
         return {"z": sum(list(x.values()))}
 
+
 class HadamardProductFusor(GeneralFusor):
     def __init__(self, out_channel) -> None:
         super().__init__("fusor-hadamard_product", out_channel)
@@ -42,7 +43,8 @@ class HadamardProductFusor(GeneralFusor):
         for v in x.values():
             output *= v
 
-        return {"z":output}
+        return {"z": output}
+
 
 class ConcatenationFusor(GeneralFusor):
     def __init__(self, in_channels, out_channel) -> None:
@@ -50,5 +52,4 @@ class ConcatenationFusor(GeneralFusor):
         self.model = Conv2dBNReLu(in_channels, out_channel)
 
     def forward(self, x):
-        return {"z":torch.concat(list(x.values()), axis=0)}
-
+        return {"z": self.model(torch.concat(list(x.values()), axis=1))}

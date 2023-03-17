@@ -5,6 +5,7 @@ from collections import OrderedDict
 from typing import List
 import torch
 from torch import nn
+import torch.nn.functional as F
 
 from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
 from torchvision.models.detection.mask_rcnn import MaskRCNNPredictor, MaskRCNNHeads
@@ -17,11 +18,13 @@ from torchvision.models.detection.faster_rcnn import (
 
 from torchvision.models.detection.transform import resize_boxes, resize_keypoints
 from torchvision.models.detection.roi_heads import paste_masks_in_image
+from data.strs import TaskStrs
 from models.components.general import Activation, map_inputs, map_labels
 
 from models.unet import UNetDecoder
 from .rcnn import (
-    EyeRCNNTransform,
+    EyeHeatmapGenerationRCNNTransform,
+    EyeObjectDetectionRCNNTransform,
     XAMIAnchorGenerator,
     XAMIRegionProposalNetwork,
     XAMIRoIHeads,
@@ -134,6 +137,12 @@ class ObjectDetectionPerformer(GeneralTaskPerformer):
             z, proposals, scaled_image_sizes, targets,
         )
 
+        # print(detections)
+        # print(targets)
+        # print(detector_losses)
+
+        # raise StopIteration()
+
         detections = self.postprocess(
             detections,
             scaled_image_sizes,
@@ -240,12 +249,13 @@ class ObjectDetectionPerformer(GeneralTaskPerformer):
         image_mean = [0.485, 0.456, 0.406]
         image_std = [0.229, 0.224, 0.225]
 
-        self.transform = EyeRCNNTransform(
-            self.params.task_name,
+        self.transform = EyeObjectDetectionRCNNTransform(
+            obj_det_task_name=self.params.task_name,
+            heatmap_task_name=TaskStrs.FIXATION_GENERATION,  # should separate this one to heatmap generation.
             # params.transform_min_size,
             # params.transform_max_size,
-            image_mean,
-            image_std,
+            image_mean=image_mean,
+            image_std=image_std,
             fixed_size=[params.image_size, params.image_size],
         )
 
@@ -267,11 +277,12 @@ class ObjectDetectionPerformer(GeneralTaskPerformer):
 
 
 class HeatmapGenerationParameters(object):
-    def __init__(self, task_name, input_channel, decoder_channels) -> None:
+    def __init__(self, task_name, input_channel, decoder_channels, image_size) -> None:
         super().__init__()
         self.task_name = task_name
         self.input_channel = input_channel
         self.decoder_channels = decoder_channels
+        self.image_size = image_size
 
 
 class HeatmapGenerationPerformer(GeneralTaskPerformer):
@@ -288,16 +299,39 @@ class HeatmapGenerationPerformer(GeneralTaskPerformer):
         self.model = UNetDecoder(
             self.params.input_channel, self.params.decoder_channels
         )
-        self.loss_fn = nn.BCEWithLogitsLoss()
+        self.loss_fn = nn.BCELoss() # not logits loss
+
+        image_mean = [0.485, 0.456, 0.406]
+        image_std = [0.229, 0.224, 0.225]
+
+        self.transform = EyeHeatmapGenerationRCNNTransform(
+            obj_det_task_name=self.params.task_name,
+            heatmap_task_name=TaskStrs.FIXATION_GENERATION,  # should separate this one to heatmap generation.
+            # params.transform_min_size,
+            # params.transform_max_size,
+            image_mean=image_mean,
+            image_std=image_std,
+            fixed_size=[params.image_size, params.image_size],
+        )
 
     def forward(self, fused, targets):
         z = fused["z"]
 
         output = self.model(z)
+        output = F.sigmoid(output) # sigmoid 
+        # output = F.softmax(output.view(1, -1), dim=1) # .view(1, self.params.image_size, self.params.image_size)
 
         loss = self.loss_fn(
+            ### softmax
+            # output,
+            # torch.stack(
+            #     [t[self.params.task_name]["heatmaps"] for t in targets], dim=0
+            # ).float().view(1, -1) ,
+            ### sigmoid
             output,
-            torch.stack([t[self.params.task_name]["heatmaps"] for t in targets], dim=0).float(),
+            torch.stack(
+                [t[self.params.task_name]["heatmaps"] for t in targets], dim=0
+            ).float(),
         )
 
         return {
@@ -365,7 +399,9 @@ class ImageClassificationPerformer(GeneralTaskPerformer):
         loss = self.loss_fn(
             # output, torch.stack([t["classifications"] for t in targets], dim=0).float()
             output,
-            torch.stack([t[self.params.task_name]["classifications"] for t in targets], dim=0).float(),
+            torch.stack(
+                [t[self.params.task_name]["classifications"] for t in targets], dim=0
+            ).float(),
         )
 
         return {

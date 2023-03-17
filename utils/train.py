@@ -1,4 +1,6 @@
-import torch, os, pickle
+import torch
+import os
+import pickle
 
 from torch.optim.optimizer import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler, ReduceLROnPlateau, MultiStepLR
@@ -7,7 +9,7 @@ from models.setup import ModelSetup
 from models.dynamic_loss import DynamicWeightedLoss
 
 from .coco_eval import get_eval_params_dict
-from .coco_utils import get_lesion_detection_cocos
+from .coco_utils import get_cocos
 
 from datetime import datetime
 
@@ -23,13 +25,12 @@ def get_optimiser(params, setup: ModelSetup) -> Optimizer:
     elif setup.optimiser == "sgd":
         print(f"Using SGD as optimizer with lr={setup.lr}")
         optimiser = torch.optim.SGD(
-            params, lr=setup.lr, momentum=0.9, weight_decay=setup.weight_decay,
+            params, lr=setup.lr, momentum=setup.sgb_momentum, weight_decay=setup.weight_decay,
         )
     else:
         raise Exception(f"Unsupported optimiser {setup.optimiser}")
 
     return optimiser
-
 
 def get_lr_scheduler(optimizer: Optimizer, setup: ModelSetup) -> _LRScheduler:
 
@@ -84,6 +85,8 @@ def print_params_setup(model):
 
 
 def get_coco_eval_params(
+    source_name,
+    task_name,
     train_dataloader,
     val_dataloader,
     test_dataloader,
@@ -94,6 +97,7 @@ def get_coco_eval_params(
 
     df_path = train_dataloader.dataset.df_path
     file_name = df_path.split(".")[0]
+    file_name = f"{file_name}_source_{source_name}_task_{task_name}"
     os.makedirs("./coco_eval_params", exist_ok=True)
     store_path = os.path.join("./coco_eval_params", file_name)
 
@@ -107,8 +111,12 @@ def get_coco_eval_params(
         eval_params_dict = save_dict["eval_params_dict"]
 
     else:
-        train_coco, val_coco, test_coco = get_lesion_detection_cocos(
-            train_dataloader, val_dataloader, test_dataloader
+        train_coco, val_coco, test_coco = get_cocos(
+            source_name=source_name,
+            task_name=task_name,
+            train_dataloader=train_dataloader,
+            val_dataloader=val_dataloader,
+            test_dataloader=test_dataloader,
         )
 
         eval_params_dict = get_eval_params_dict(
@@ -140,4 +148,3 @@ def get_params(model, dynamic_loss_weight):
     if dynamic_loss_weight:
         params += [p for p in dynamic_loss_weight.parameters() if p.requires_grad]
     return params
-

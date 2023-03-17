@@ -5,9 +5,10 @@ import pickle
 
 from datetime import datetime
 from copy import deepcopy
+from models.setup import ModelSetup
 from utils.detect_utils import MetricLogger
 from utils.engine import evaluate
-from utils.eval import get_ap_ar
+from utils.eval import get_ap_ar, get_performance
 import torch.nn as nn
 
 import utils.print as print_f
@@ -72,21 +73,24 @@ def get_data_from_metric_logger(loger: MetricLogger) -> Dict[str, float]:
 
 
 def save_checkpoint(
+    setup: ModelSetup,
     train_info: TrainingInfo,
     model: nn.Module,
-    val_ar: float,
-    val_ap: float,
-    test_ar: float,
-    test_ap: float,
+    val_performance_value: float,
+    test_performance_value: float,
     optimizer: Optimizer = None,
     dynamic_weight: nn.Module = None,
 ) -> TrainingInfo:
     current_time_string = datetime.now().strftime("%m-%d-%Y %H-%M-%S")
 
+    performance_str = (
+        f"{setup.performance_standard_task}_{setup.performance_standard_metric}"
+    )
+
     model_path = (
         (
-            f"val_ar_{val_ar:.4f}_ap_{val_ap:.4f}_"
-            + f"test_ar_{test_ar:.4f}_ap_{test_ap:.4f}_"
+            f"val_{performance_str}_{val_performance_value:.4f}_"
+            + f"test_{performance_str}_{test_performance_value:.4f}_"
             + f"epoch{train_info.epoch}_{current_time_string}"
             + f"_{train_info.model_setup.name}"
         )
@@ -131,9 +135,9 @@ def remove_previous_model(previous_model: str):
 
 
 def check_best(
-    setup,
+    setup: ModelSetup,
     train_info: TrainingInfo,
-    val_ap_ar,
+    val_performance_value,
     eval_params_dict: Dict,
     model: nn.Module,
     optim: Optimizer,
@@ -143,15 +147,13 @@ def check_best(
     device: str,
     score_thres: Dict[str, float] = None,
     dynamic_weight: nn.Module = None,
-    test_ap_ar=None,
+    test_performance=None,
 ) -> Tuple[float, float, TrainingInfo]:
 
-    val_ar, val_ap = val_ap_ar["ar"], val_ap_ar["ap"]
-
     ## Targeting the model with higher Average Recall and Average Precision.
-    if val_ar > train_info.best_val_ar or val_ap > train_info.best_val_ap:
-        if test_ap_ar is None:
-            train_info.test_evaluator, test_logger = evaluate(
+    if val_performance_value > train_info.best_val_performance:
+        if test_performance is None:
+            train_info.test_evaluator, _ = evaluate(
                 setup=setup,
                 model=model,
                 data_loader=test_dataloader,
@@ -161,52 +163,47 @@ def check_best(
                 iou_types=iou_types,
                 score_thres=score_thres,
             )
-            test_ap_ar = get_ap_ar(train_info.test_evaluator['lesion-detection'])
 
-        if val_ar > train_info.best_val_ar:
+            test_performance = get_performance(
+                    list(model.task_performers.keys()),
+                    train_info.test_evaluator,
+                    iouThr=0.5,
+                    areaRng="all",
+                    maxDets=10,
+                )
+
+            test_performance_value = test_performance[
+                setup.performance_standard_task
+            ][
+                setup.performance_standard_metric
+            ]  # get_ap_ar(train_info.test_evaluator['lesion-detection'])
+
+        if val_performance_value > train_info.best_val_performance:
             ## Save best validation model
-            previous_ar_model = deepcopy(train_info.best_ar_val_model_path)
+            previous_ar_model = deepcopy(train_info.best_performance_model_path)
             train_info = save_checkpoint(
+                setup=setup,
                 train_info=train_info,
                 model=model,
-                val_ar=val_ar,
-                val_ap=val_ap,
-                test_ar=test_ap_ar["ar"],
-                test_ap=test_ap_ar["ap"],
+                val_performance_value=val_performance_value,
+                test_performance_value=test_performance_value,
                 optimizer=optim,
                 dynamic_weight=dynamic_weight,
             )
-            train_info.best_ar_val_model_path = train_info.final_model_path
-            train_info.best_val_ar = val_ar
+            train_info.best_performance_model_path = train_info.final_model_path
+            train_info.best_val_performance = val_performance_value
             remove_previous_model(previous_ar_model)
 
-        if val_ap > train_info.best_val_ap:
-            previous_ap_model = deepcopy(train_info.best_ap_val_model_path)
-            train_info = save_checkpoint(
-                train_info=train_info,
-                model=model,
-                val_ar=val_ar,
-                val_ap=val_ap,
-                test_ar=test_ap_ar["ar"],
-                test_ap=test_ap_ar["ap"],
-                optimizer=optim,
-                dynamic_weight=dynamic_weight,
-            )
-            train_info.best_ap_val_model_path = train_info.final_model_path
-            train_info.best_val_ap = val_ap
-            remove_previous_model(previous_ap_model)
-
-    return val_ar, val_ap, train_info
+    return val_performance_value, train_info
 
 
 def end_train(
-    setup,
+    setup: ModelSetup,
     train_info: TrainingInfo,
     model: nn.Module,
     optim: Optimizer,
     eval_params_dict: Dict,
-    last_val_ar: float,
-    last_val_ap: float,
+    last_val_performance: float,
     test_dataloader: DataLoader,
     device: str,
     test_coco: Dataset,
@@ -225,10 +222,7 @@ def end_train(
     # print model
     if train_info.model_setup.save_early_stop_model:
         print_f.print_title(
-            f"Best AP validation model has been saved to: [{train_info.best_ap_val_model_path}]"
-        )
-        print_f.print_title(
-            f"Best AR validation model has been saved to: [{train_info.best_ar_val_model_path}]"
+            f"Best Performance model has been saved to: [{train_info.best_performance_model_path}]"
         )
 
     train_info.test_evaluator, test_logger = evaluate(
@@ -242,15 +236,26 @@ def end_train(
         score_thres=score_thres,
     )
 
-    test_ap_ar = get_ap_ar(train_info.test_evaluator['lesion-detection'])
+    test_performance = get_performance(
+                    list(model.task_performers.keys()),
+                    train_info.test_evaluator,
+                    iouThr=0.5,
+                    areaRng="all",
+                    maxDets=10,
+                )
+
+    test_performance_value = test_performance[
+                setup.performance_standard_task
+            ][
+                setup.performance_standard_metric
+            ]  
 
     train_info = save_checkpoint(
+        setup=setup,
         train_info=train_info,
         model=model,
-        val_ar=last_val_ar,
-        val_ap=last_val_ap,
-        test_ar=test_ap_ar["ar"],
-        test_ap=test_ap_ar["ap"],
+        val_performance_value=last_val_performance,
+        test_performance_value=test_performance_value,
         optimizer=optim,
         dynamic_weight=dynamic_weight,
     )

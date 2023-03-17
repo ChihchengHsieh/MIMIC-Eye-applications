@@ -6,16 +6,13 @@ from models.components.general import Conv2dBNReLu
 
 class DecoderBlock(nn.Module):
     def __init__(
-        self,
-        in_channels,
-        out_channels,
+        self, in_channels, out_channels,
     ):
         super().__init__()
 
         self.convs = nn.Sequential(
             Conv2dBNReLu(in_channels, out_channels, kernel_size=3, padding=1,),
-            Conv2dBNReLu(out_channels, out_channels,
-                         kernel_size=3, padding=1,),
+            Conv2dBNReLu(out_channels, out_channels, kernel_size=3, padding=1,),
         )
 
     def forward(self, x):
@@ -27,9 +24,7 @@ class DecoderBlock(nn.Module):
 
 class UNetDecoder(nn.Module):
     def __init__(
-        self,
-        input_channel,
-        decoder_channels,
+        self, input_channel, decoder_channels,
     ):
         super().__init__()
 
@@ -49,8 +44,21 @@ class UNetDecoder(nn.Module):
         # combine decoder keyword arguments
         # kwargs = dict(use_batchnorm=use_batchnorm, attention_type=attention_type)
 
-        self.model = nn.Sequential(*[DecoderBlock(channels[i], channels[i+1])
-                                     for i in range(len(channels)-1)])
+        self.decoder_layers = [
+            DecoderBlock(channels[i], channels[i + 1]) for i in range(len(channels) - 1)
+        ]
+
+        self.decoder_layers.append(
+            nn.Conv2d(
+                in_channels=channels[-1],
+                out_channels=1,
+                kernel_size=3,
+                stride=1,
+                padding=1,
+            )
+        )
+
+        self.model = nn.Sequential(*self.decoder_layers)
 
     def forward(self, x):
 
