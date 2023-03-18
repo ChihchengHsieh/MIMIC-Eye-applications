@@ -112,6 +112,13 @@ def get_normal_backbone(
         backbone.out_channels = 1280
         backbone.out_dim = setup.image_size / 32
 
+    elif setup.backbone == "efficientnet_b5":
+        backbone = _remove_last(
+            torchvision.models.efficientnet_b5(pretrained=pretrained_backbone)
+        )
+        backbone.out_channels = 2048
+        backbone.out_dim = setup.image_size / 32
+
     elif setup.backbone == "convnext_base":
         backbone = _remove_last(
             torchvision.models.convnext_base(pretrained=pretrained_backbone)
