@@ -378,7 +378,7 @@ def draw_heatmap(fix, imagefile=None, alpha=0.5, savefilename=None):
     return fig
 
 
-def draw_raw(x, y, imagefile=None, savefilename=None, markersize=10):
+def draw_raw(x, y, imagefile=None, savefilename=None, markersize=10,):
 
     img = image.imread(imagefile)
     dispsize = img.transpose(1, 0).shape
