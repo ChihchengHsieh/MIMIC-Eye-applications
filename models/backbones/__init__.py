@@ -126,6 +126,13 @@ def get_normal_backbone(
         backbone.out_channels = 1024
         backbone.out_dim = setup.image_size / 32
 
+    elif setup.backbone == "regnet_y_8gf":
+        backbone = _to_anynet_feasture_extract_backbone(
+            torchvision.models.regnet_y_8gf(pretrained=pretrained_backbone)
+        )
+        backbone.out_channels = 2016
+        backbone.out_dim = setup.image_size / 32
+
     else:
         raise Exception(f"Unsupported backbone {setup.backbone}")
 
@@ -157,6 +164,16 @@ def _to_resnet_feature_extract_backbone(resnet):
         resnet.layer3,
         resnet.layer4,
     )
+
+def _to_anynet_feasture_extract_backbone(anynet):
+
+    return nn.Sequential(
+        anynet.stem,
+        anynet.trunk_output,
+    )
+
+    # x = self.stem(x)
+    # x = self.trunk_output(x)
 
 
 def _remove_last(model):

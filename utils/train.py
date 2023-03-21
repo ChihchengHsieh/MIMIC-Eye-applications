@@ -37,7 +37,7 @@ def get_lr_scheduler(optimizer: Optimizer, setup: ModelSetup) -> _LRScheduler:
     if setup.lr_scheduler == "ReduceLROnPlateau":
         lr_scheduler = ReduceLROnPlateau(
             optimizer,
-            mode="min",
+            mode="max",
             factor=setup.reduceLROnPlateau_factor,
             patience=setup.reduceLROnPlateau_patience,
             min_lr=1e-10,
@@ -52,7 +52,7 @@ def get_lr_scheduler(optimizer: Optimizer, setup: ModelSetup) -> _LRScheduler:
         lr_scheduler = None
 
     return lr_scheduler
-
+ 
 
 def num_params(model):
     return sum([param.nelement() for param in model.parameters()])
