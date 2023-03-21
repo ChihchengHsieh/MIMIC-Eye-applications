@@ -715,3 +715,5 @@ def print_num_params(trained_models, device):
         )
 
         print(f"| [{train_info.model_setup.name}] | #Params: [{num_params(model):,}] |")
+
+
