@@ -378,7 +378,7 @@ def draw_heatmap(fix, imagefile=None, alpha=0.5, savefilename=None):
     return fig
 
 
-def draw_raw(x, y, imagefile=None, savefilename=None, markersize=10,):
+def draw_raw(x, y, imagefile=None, savefilename=None, markersize=10, color="pink"):
 
     img = image.imread(imagefile)
     dispsize = img.transpose(1, 0).shape
@@ -387,7 +387,7 @@ def draw_raw(x, y, imagefile=None, savefilename=None, markersize=10,):
     fig, ax = draw_display(dispsize, imagefile=imagefile)
 
     # plot raw data points
-    ax.plot(x, y, 'o', color=COLS['aluminium'][0], markeredgecolor=COLS['aluminium'][5], markersize=markersize)
+    ax.plot(x, y, 'o', color=color, markeredgecolor=color, markersize=markersize)
 
     # invert the y axis, as (0,0) is top left on a display
     ax.invert_yaxis()
