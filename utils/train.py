@@ -19,18 +19,25 @@ def get_optimiser(params, setup: ModelSetup) -> Optimizer:
     if setup.optimiser == "adamw":
         print(f"Using AdamW as optimizer with lr={setup.lr}")
         optimiser = torch.optim.AdamW(
-            params, lr=setup.lr, betas=(0.9, 0.999), weight_decay=setup.weight_decay,
+            params,
+            lr=setup.lr,
+            betas=(0.9, 0.999),
+            weight_decay=setup.weight_decay,
         )
 
     elif setup.optimiser == "sgd":
         print(f"Using SGD as optimizer with lr={setup.lr}")
         optimiser = torch.optim.SGD(
-            params, lr=setup.lr, momentum=setup.sgb_momentum, weight_decay=setup.weight_decay,
+            params,
+            lr=setup.lr,
+            momentum=setup.sgb_momentum,
+            weight_decay=setup.weight_decay,
         )
     else:
         raise Exception(f"Unsupported optimiser {setup.optimiser}")
 
     return optimiser
+
 
 def get_lr_scheduler(optimizer: Optimizer, setup: ModelSetup) -> _LRScheduler:
 
@@ -52,7 +59,7 @@ def get_lr_scheduler(optimizer: Optimizer, setup: ModelSetup) -> _LRScheduler:
         lr_scheduler = None
 
     return lr_scheduler
- 
+
 
 def num_params(model):
     return sum([param.nelement() for param in model.parameters()])
@@ -93,6 +100,7 @@ def get_coco_eval_params(
     detect_eval_dataset,
     iou_thrs,
     use_iobb,
+    maxDets,
 ):
 
     df_path = train_dataloader.dataset.df_path
@@ -120,7 +128,10 @@ def get_coco_eval_params(
         )
 
         eval_params_dict = get_eval_params_dict(
-            detect_eval_dataset, iou_thrs=iou_thrs, use_iobb=use_iobb,
+            detect_eval_dataset,
+            iou_thrs=iou_thrs,
+            use_iobb=use_iobb,
+            maxDets=maxDets,
         )
 
         save_dict = {

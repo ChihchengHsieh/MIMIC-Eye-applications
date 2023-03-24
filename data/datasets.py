@@ -505,8 +505,8 @@ class ReflacxDataset(data.Dataset):
         with_bboxes_label: bool = True,
         with_fixations_label: bool = True,
         with_fixations_input: bool = True,
-        fiaxtions_mode_label="reporting",  # [silent, reporting, all]
-        fiaxtions_mode_input="reporting",
+        fixations_mode_label="reporting",  # [silent, reporting, all]
+        fixations_mode_input="reporting",
         with_chexpert_label: bool = True,
         with_negbio_label: bool = True,
         image_mean=[0.485, 0.456, 0.406],
@@ -550,11 +550,11 @@ class ReflacxDataset(data.Dataset):
 
         self.with_fixations_label: bool = with_fixations_label
         if self.with_fixations_label:
-            self.fiaxtions_mode_label = fiaxtions_mode_label
+            self.fiaxtions_mode_label = fixations_mode_label
 
         self.with_fixations_input = with_fixations_input
         if self.with_fixations_input:
-            self.fiaxtions_mode_input = fiaxtions_mode_input
+            self.fiaxtions_mode_input = fixations_mode_input
 
         # deciding which to df load
         self.df_path = (

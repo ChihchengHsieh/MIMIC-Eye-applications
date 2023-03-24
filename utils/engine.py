@@ -167,7 +167,6 @@ class ImageClassificationEvaluator:
             "auc": self.get_clf_score(roc_auc_score, has_threshold=0.5),
         }
 
-
 def train_one_epoch(
     setup: ModelSetup,
     model: ExtractFusePerform,

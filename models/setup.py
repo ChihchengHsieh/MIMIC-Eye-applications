@@ -141,7 +141,7 @@ from data.strs import TaskStrs
 #     eval_freq: int = 10
 
 #     use_iobb: bool = True
-#     iou_thrs: np.array = field(default_factory=lambda: np.array([0.5]))
+#     iou_thrs: np.array = field(default_factory=lambda: np.array([0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95]))
 
 #     fiaxtions_mode: str = "normal"  # [normal, reporting, silent]
 
