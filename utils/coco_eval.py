@@ -507,7 +507,7 @@ class COCOeval:
             eval_dicts.append(_summarize(0, areaRng='small', maxDets=self.params.maxDets[2]))
             eval_dicts.append(_summarize(0, areaRng='medium', maxDets=self.params.maxDets[2]))
             eval_dicts.append(_summarize(0, areaRng='large', maxDets=self.params.maxDets[2]))
-            # return stats
+            return eval_dicts
         if not self.eval:
             raise Exception('Please run accumulate() first')
         iouType = self.params.iouType
