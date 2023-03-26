@@ -1,3 +1,5 @@
 trained_models/
 training_records/
 coco_eval_params/
+*.zip
+best5worst5/
