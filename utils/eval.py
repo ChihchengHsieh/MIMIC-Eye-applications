@@ -52,7 +52,7 @@ from utils.train import num_params
 
 
 def get_ap_ar(
-    evaluator, iouThr=0.5, areaRng="all", maxDets=10,
+    evaluator, iouThr=None, areaRng="all", maxDets=30,
 ):
     ap = external_summarize(
         evaluator.coco_eval["bbox"],

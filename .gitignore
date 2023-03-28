@@ -4,3 +4,4 @@ coco_eval_params/
 *.zip
 best5worst5/
 duration_in_lesion_bb/
+eval_results/
