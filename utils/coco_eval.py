@@ -21,6 +21,44 @@ from pycocotools import mask as maskUtils
 import copy
 
 
+# class EvalResult:
+#     def __init__(
+#         self,
+#         ap,
+#         iouThr,
+#         areaRng,
+#         maxDets,
+#         mean_s,
+#         p_title_str,
+#     ) -> None:
+#         self.ap = ap
+#         self.iouThr = iouThr
+#         self.areaRng = areaRng
+#         self.maxDets = maxDets
+#         self.mean_s = mean_s
+#         self.p_title_str = p_title_str
+
+#     def get_performance_str(
+#         self,
+#     ):
+#         return f"{self.p_title_str} = {self.mean_s:0.3f}"
+
+
+def eval_dict_to_ap_ar_str(eval_dict):
+    return  f"{eval_dict['p_title_str']} = {eval_dict['mean_s']:0.3f}"
+#     ap = eval_dict["ap"]
+#     areaRng = eval_dict["areaRng"]
+#     maxDets = eval_dict["maxDets"]
+#     mean_s = eval_dict["mean_s"]
+
+#     iStr = " {:<18} {} @[ IoU={:<9} | area={:>6s} | maxDets={:>3d} ] = {:0.3f}"
+#     titleStr = "Average Precision" if ap == 1 else "Average Recall"
+#     typeStr = "(AP)" if ap == 1 else "(AR)"
+#     iouStr = eval_dict["iouStr"]
+
+#     return iStr.format(titleStr, typeStr, iouStr, areaRng, maxDets, mean_s)
+
+
 class COCOeval:
     # Interface for evaluating detection on the Microsoft COCO dataset.
     #
@@ -338,7 +376,7 @@ class COCOeval:
         dtIg = np.logical_or(dtIg, np.logical_and(dtm == 0, np.repeat(a, T, 0)))
         # store results for given image and category
 
-#####################
+        #####################
         # dtScores = np.concatenate([e["dtScores"][0:maxDet] for e in E])
         # inds = np.argsort(-dtScores, kind="mergesort")
         # dtScoresSorted = dtScores[inds]
@@ -355,7 +393,7 @@ class COCOeval:
         # tps = np.logical_and(dtm, np.logical_not(dtIg))
         # fps = np.logical_and(np.logical_not(dtm), np.logical_not(dtIg))
         # fns = np.logical_and(np.logical_not(gtm), np.logical_not(gtIg[np.newaxis, :].repeat(len(gtm),axis=0)))
-######################
+        ######################
         return {
             "image_id": imgId,
             "category_id": catId,
@@ -413,26 +451,34 @@ class COCOeval:
         A0 = len(_pe.areaRng)
         # retrieve E at each category, area range, and max number of detections
 
-
         ### Confusion Matrix Part ###
         eval_maxDet = p.maxDets[-1]
 
-        E = [ e for e in self.evalImgs if (not e is None) and (e['aRng'] == [0, 10000000000.0]) and (e['maxDet'] == eval_maxDet)]
+        E = [
+            e
+            for e in self.evalImgs
+            if (not e is None)
+            and (e["aRng"] == [0, 10000000000.0])
+            and (e["maxDet"] == eval_maxDet)
+        ]
         dtScores = np.concatenate([e["dtScores"][0:eval_maxDet] for e in E])
         inds = np.argsort(-dtScores, kind="mergesort")
-        gtm = np.concatenate([e["gtMatches"] for e in E], axis=1) # added
-        dtm = np.concatenate(
-            [e["dtMatches"][:, 0:eval_maxDet] for e in E], axis=1
-        )[:, inds]
-        dtIg = np.concatenate(
-            [e["dtIgnore"][:, 0:eval_maxDet] for e in E], axis=1
-        )[:, inds]
+        gtm = np.concatenate([e["gtMatches"] for e in E], axis=1)  # added
+        dtm = np.concatenate([e["dtMatches"][:, 0:eval_maxDet] for e in E], axis=1)[
+            :, inds
+        ]
+        dtIg = np.concatenate([e["dtIgnore"][:, 0:eval_maxDet] for e in E], axis=1)[
+            :, inds
+        ]
         gtIg = np.concatenate([e["gtIgnore"] for e in E])
         npig = np.count_nonzero(gtIg == 0)
 
         tps = np.logical_and(dtm, np.logical_not(dtIg))
         fps = np.logical_and(np.logical_not(dtm), np.logical_not(dtIg))
-        fns = np.logical_and(np.logical_not(gtm), np.logical_not(gtIg[np.newaxis, :].repeat(len(gtm),axis=0)))
+        fns = np.logical_and(
+            np.logical_not(gtm),
+            np.logical_not(gtIg[np.newaxis, :].repeat(len(gtm), axis=0)),
+        )
 
         # get the one for th first threshold.
         num_tps = tps[0].sum()
@@ -526,7 +572,7 @@ class COCOeval:
         Note this functin can *only* be applied on the default parameter setting
         """
 
-        def _summarize(ap=1, iouThr=None, areaRng="all", maxDets=100):
+        def _summarize(ap=1, iouThr=None, areaRng="all", maxDets=100): 
             p = self.params
             iStr = " {:<18} {} @[ IoU={:<9} | area={:>6s} | maxDets={:>3d} ] = {:0.3f}"
             titleStr = "Average Precision" if ap == 1 else "Average Recall"
@@ -558,16 +604,35 @@ class COCOeval:
                 mean_s = -1
             else:
                 mean_s = np.mean(s[s > -1])
-            print(iStr.format(titleStr, typeStr, iouStr, areaRng, maxDets, mean_s))
+
+            printing_str = iStr.format(
+                titleStr, typeStr, iouStr, areaRng, maxDets, mean_s
+            )
+
+            p_title_str = f" {titleStr:<18} {typeStr} @[ IoU={iouStr:<9} | area={areaRng:>6s} | maxDets={maxDets:>3d} ]"
+            iStr = f"{p_title_str} = {mean_s:0.3f}"
+
+            print(printing_str)
+
+            # return EvalResult(
+            #     ap=ap,
+            #     iouThr=iouThr,
+            #     areaRng=areaRng,
+            #     maxDets=maxDets,
+            #     mean_s=mean_s,
+            #     p_title_str=p_title_str,
+            # )
+
             return {
                 "ap": ap,
                 "iouThr": iouThr,
                 "areaRng": areaRng,
                 "maxDets": maxDets,
                 "mean_s": mean_s,
+                "p_title_str": p_title_str,
             }
 
-        def _summarizeDets():
+        def _summarizeDets() -> list[dict]:
             # print("Running summarise here.")
             # stats = np.zeros((17,))
             # stats[0] = _summarize(1)
@@ -587,9 +652,9 @@ class COCOeval:
             # stats[14] = _summarize(0, areaRng='small', maxDets=self.params.maxDets[2])
             # stats[15] = _summarize(0, areaRng='medium', maxDets=self.params.maxDets[2])
             # stats[16] = _summarize(0, areaRng='large', maxDets=self.params.maxDets[2])
-            eval_dicts = []
+            eval_dicts: list[dict] = []
 
-            eval_dicts.append(_summarize(1))
+            # eval_dicts.append(_summarize(1))
 
             for max_det in self.params.maxDets:
                 eval_dicts.append(_summarize(1, maxDets=max_det))
