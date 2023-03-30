@@ -5,3 +5,4 @@ coco_eval_params/
 best5worst5/
 duration_in_lesion_bb/
 eval_results/
+bestworst/
