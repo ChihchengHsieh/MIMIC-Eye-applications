@@ -106,7 +106,7 @@ class HeatmapGenerationEvaluator:
 
             self.gt = gt
             self.pred = pred
-            
+
             ### Continues
             self.mses.append(
                 mean_squared_error(np.array(gt).reshape(-1), np.array(pred).reshape(-1))
@@ -124,7 +124,9 @@ class HeatmapGenerationEvaluator:
         # for t in targets:
         #     self.gts.append(t['heatmaps'].to(cpu_device).detach().numpy())
 
-    def get_performance_dict(self,):
+    def get_performance_dict(
+        self,
+    ):
         return {
             "iou": np.mean(self.ious),
             "f1": np.mean(self.f1_scores),
@@ -158,7 +160,9 @@ class ImageClassificationEvaluator:
             np.array(self.gts).reshape(-1), (np.array(self.preds)).reshape(-1)
         )
 
-    def get_performance_dict(self,):
+    def get_performance_dict(
+        self,
+    ):
         return {
             "f1": self.get_clf_score(f1_score, has_threshold=0.5),
             "precision": self.get_clf_score(precision_score, has_threshold=0.5),
@@ -166,6 +170,7 @@ class ImageClassificationEvaluator:
             "recall": self.get_clf_score(recall_score, has_threshold=0.5),
             "auc": self.get_clf_score(roc_auc_score, has_threshold=0.5),
         }
+
 
 def train_one_epoch(
     setup: ModelSetup,
@@ -210,14 +215,14 @@ def train_one_epoch(
                 evaluators[k] = ImageClassificationEvaluator()
             else:
                 raise ValueError(f"Task-{k} doesn't have an evaluator.")
-            
+
     for e in model.feature_extractors.values():
         if isinstance(e, ImageFeatureExtractor):
             if epoch < setup.model_warmup_epochs:
                 e.fix_backbone_weights(True)
             else:
                 e.fix_backbone_weights(False)
-            
+
     for data in metric_logger.log_every(data_loader, print_freq, header):
         inputs, targets = data_loader.dataset.prepare_input_from_data(data)
         # inputs, targets = model.prepare(inputs, targets)
@@ -244,8 +249,12 @@ def train_one_epoch(
             else:
                 # enhance the rpn. (maybe lower this value later epoches if trainable.)
                 if epoch < setup.loss_warmup_epochs:
-                    all_losses['lesion-detection_performer-object_detection_loss_box_reg'] *= 0
-                    all_losses['lesion-detection_performer-object_detection_loss_classifier'] *= 0
+                    all_losses[
+                        "lesion-detection_performer-object_detection_loss_box_reg"
+                    ] *= 0
+                    all_losses[
+                        "lesion-detection_performer-object_detection_loss_classifier"
+                    ] *= 0
 
                 # all_losses['lesion-detection_performer-object_detection_loss_box_reg'] *= 0.44
                 # all_losses['lesion-detection_performer-object_detection_loss_classifier'] *= 0.47
@@ -338,6 +347,7 @@ def evaluate(
     iou_types: List[str],
     params_dict: Dict = None,
     score_thres: Dict[str, float] = None,
+    return_dt_gt: bool = False,
 ) -> Tuple[CocoEvaluator, detect_utils.MetricLogger]:
 
     n_threads = torch.get_num_threads()
@@ -350,6 +360,9 @@ def evaluate(
     # coco_evaluator = CocoEvaluator(coco, iou_types, params_dict)
 
     evaluators = {}
+
+    all_dts = []
+    all_gts = []
 
     for k, v in model.task_performers.items():
         if isinstance(v, ObjectDetectionPerformer):
@@ -413,11 +426,16 @@ def evaluate(
                 ]
 
                 # record the trained data from each, (only stored the in the cpu memory, not gpu)
-
                 res = {
                     img_id.item(): dt
                     for img_id, dt in zip([t[k]["image_id"] for t in targets], obj_dts)
                 }
+
+                if return_dt_gt:
+                    gts = map_every_thing_to_device(targets, "cpu")
+                    all_dts.append(res)
+                    all_gts.append(gts)
+
                 evaluators[k].update(res)
             else:
                 evaluators[k].update(outputs[k]["outputs"], [t[k] for t in targets])
@@ -441,5 +459,12 @@ def evaluate(
             e.summarize()
 
     torch.set_num_threads(n_threads)
+
+    if return_dt_gt:
+        return (
+            evaluators,
+            metric_logger,
+            (all_dts, all_gts)
+        )
 
     return evaluators, metric_logger

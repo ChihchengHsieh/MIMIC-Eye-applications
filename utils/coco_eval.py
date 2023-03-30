@@ -375,25 +375,7 @@ class COCOeval:
         )
         dtIg = np.logical_or(dtIg, np.logical_and(dtm == 0, np.repeat(a, T, 0)))
         # store results for given image and category
-
-        #####################
-        # dtScores = np.concatenate([e["dtScores"][0:maxDet] for e in E])
-        # inds = np.argsort(-dtScores, kind="mergesort")
-        # dtScoresSorted = dtScores[inds]
-
-        # gtm = np.concatenate([e["gtMatches"] for e in E], axis=1)
-        # dtm = np.concatenate(
-        #     [e["dtMatches"][:, 0:maxDet] for e in E], axis=1
-        # )[:, inds]
-        # dtIg = np.concatenate(
-        #     [e["dtIgnore"][:, 0:maxDet] for e in E], axis=1
-        # )[:, inds]
-        # gtIg = np.concatenate([e["gtIgnore"] for e in E])
-        # npig = np.count_nonzero(gtIg == 0)
-        # tps = np.logical_and(dtm, np.logical_not(dtIg))
-        # fps = np.logical_and(np.logical_not(dtm), np.logical_not(dtIg))
-        # fns = np.logical_and(np.logical_not(gtm), np.logical_not(gtIg[np.newaxis, :].repeat(len(gtm),axis=0)))
-        ######################
+        
         return {
             "image_id": imgId,
             "category_id": catId,
