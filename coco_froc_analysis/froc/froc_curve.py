@@ -12,6 +12,8 @@ from ..utils import transform_gt_into_pr
 from ..utils import update_scores
 from .froc_stats import init_stats
 from .froc_stats import update_stats
+import itertools
+from scipy import interpolate
 
 
 def froc_point(gt, pr, score_thres, use_iou, iou_thres):
@@ -295,3 +297,111 @@ def generate_froc_curve(
         return stats, lls_accuracy, nlls_per_image
     else:
         return stats, lls_accuracy, nlls_per_image
+    
+
+
+def get_froc_curve(
+    dataset,
+    dts,
+    all_gts,
+    plot_title=None,
+    use_iou=True,
+    n_sample_points=100,
+    froc_save_folder="./froc_figures",
+):
+    anns = []
+    gts = [
+        g["lesion-detection"]
+        for g in list(itertools.chain.from_iterable(list(all_gts)))
+    ]
+    for g in gts:
+        for i, bb in enumerate(g["unsized_boxes"]):
+            anns.append(
+                {
+                    "image_id": g["image_id"].item(),
+                    "category_id": g["labels"][i].item(),
+                    "iscrowd": g["iscrowd"][i].item(),
+                    "bbox": bb.tolist(),
+                    "ignore": 0,
+                }
+            )
+
+    pr = []
+    for dt in dts:
+        for image_id, d in dt.items():
+            for i in range(len(d["boxes"])):
+                pr.append(
+                    {
+                        "image_id": image_id,
+                        "category_id": d["labels"][i].item(),
+                        "score": d["scores"][i].item(),
+                        "bbox": d["boxes"][i].numpy().tolist(),
+                    }
+                )
+
+    categories = [
+        {
+            "id": dataset.disease_to_idx(i),
+            "name": i,
+            "color": "blue",
+        }
+        for i in dataset.labels_cols
+    ]
+
+    gt = {
+        "categories": categories,
+        "annotations": anns,
+        "images": [{"id": id} for id in list(set([g["image_id"].item() for g in gts]))],
+    }
+
+    if plot_title:
+        os.makedirs(froc_save_folder, exist_ok=True)
+
+    stats, lls_accuracy, nlls_per_image = generate_froc_curve(
+        gt=gt,
+        pr=pr,
+        use_iou=use_iou,
+        iou_thres=0.5,
+        n_sample_points=n_sample_points,
+        plot_title=plot_title,
+        plot_output_path=os.path.join(froc_save_folder, f"{plot_title}.png")
+        if plot_title
+        else None,
+        bounds=None,
+    )
+
+    return stats, lls_accuracy, nlls_per_image
+
+
+
+def get_interpolate_froc(
+    stats, lls_accuracy,nlls_per_image, cat_id=None, fps_per_img=[0.5, 1, 2, 4], weight=True,
+):
+    
+    if cat_id is None:
+        number_all_lesions =sum([stats[cat_id]['n_lesions'] for cat_id in stats.keys()])
+        all_frocs = []
+        for cat_id in stats.keys():
+            f = interpolate.interp1d(
+                nlls_per_image[cat_id], lls_accuracy[cat_id], fill_value="extrapolate"
+            )
+
+            cat_froc = f(fps_per_img)
+
+
+            if weight:
+                cat_froc = cat_froc * ( stats[cat_id]["n_lesions"] /number_all_lesions) 
+
+            all_frocs.append(cat_froc)
+
+        if weight:
+            return np.array(all_frocs).sum(axis=0)
+        
+        else:
+            return np.array(all_frocs).mean(axis=0)
+
+    else:
+        f = interpolate.interp1d(
+            nlls_per_image[cat_id], lls_accuracy[cat_id], fill_value="extrapolate"
+        )
+        return f(fps_per_img)

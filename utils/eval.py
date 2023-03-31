@@ -1,5 +1,6 @@
 import pickle
 import os
+import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from IPython.display import display
@@ -22,6 +23,7 @@ from data.constants import DEFAULT_REFLACX_LABEL_COLS
 
 # from utils.plot import plot_losses, plot_train_val_evaluators
 from utils.train import num_params
+from coco_froc_analysis.froc.froc_curve import get_froc_curve, get_interpolate_froc
 
 # def get_ar_ap(
 #     evaluator: CocoEvaluator,
@@ -618,18 +620,43 @@ def get_ap_ar_for_train_val(
     return train_ap_ar, val_ap_ar
 
 
-def get_performance(all_tasks, evaluator, iouThr=0.5, areaRng="all", maxDets=10):
+def get_performance(dataset, all_tasks, evaluator, iouThr=0.5, areaRng="all", maxDets=10):
 
     performance_dict = {}
 
     if TaskStrs.LESION_DETECTION in all_tasks:
-        ap_ar = get_ap_ar(
+        p_dict = get_ap_ar(
             evaluator[TaskStrs.LESION_DETECTION],
             iouThr=iouThr,
             areaRng=areaRng,
             maxDets=maxDets,
         )
-        performance_dict.update({TaskStrs.LESION_DETECTION: ap_ar})
+
+         # change to froc
+        all_dts = evaluator[TaskStrs.LESION_DETECTION].all_dts
+        all_gts = evaluator[TaskStrs.LESION_DETECTION].all_gts
+
+        stats, lls_accuracy, nlls_per_image = get_froc_curve(
+            dataset=dataset,
+            dts=all_dts,
+            all_gts=all_gts,
+            plot_title=None,
+            use_iou=True,
+            n_sample_points=200,
+            froc_save_folder="./froc_figures"
+        )
+
+        froc_v = get_interpolate_froc(
+                stats=stats,
+                lls_accuracy=lls_accuracy,
+                nlls_per_image=nlls_per_image,
+                cat_id=None,
+                fps_per_img=[0.5, 1, 2, 4],
+                weight=True,
+        )
+
+        p_dict['froc'] = np.mean(froc_v)
+        performance_dict.update({TaskStrs.LESION_DETECTION: p_dict})
 
     if TaskStrs.FIXATION_GENERATION in all_tasks:
         performance_dict.update(

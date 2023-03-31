@@ -205,7 +205,7 @@ from data.strs import TaskStrs
 #             "Support Devices_negbio",
 #         ]
 #     )
-    
+
 #     performance_standard_task:str = TaskStrs.LESION_DETECTION
 #     performance_standard_metric: str = "ap"
 
@@ -303,6 +303,7 @@ class ModelSetup:
     image_size: int = 512
     image_mean: List[int] = field(default_factory=lambda: [0.485, 0.456, 0.406])
     image_std: List[int] = field(default_factory=lambda: [0.229, 0.224, 0.225])
+
     backbone_out_channels: int = 64
     batch_size: int = 16
     warmup_epochs: int = 0
@@ -348,7 +349,12 @@ class ModelSetup:
     eval_freq: int = 10
 
     use_iobb: bool = True
-    iou_thrs: np.array = field(default_factory=lambda: np.array([0.5]))
+    iou_thrs: np.array = field(
+        default_factory=lambda: np.array(
+            [0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95]
+        )
+    )
+    maxDets: np.array = field(default_factory=lambda: [1, 5, 10, 30])
 
     fiaxtions_mode_input: str = "reporting"  # [normal, reporting, silent]
     fiaxtions_mode_label: str = "reporting"  # [normal, reporting, silent]
@@ -369,7 +375,9 @@ class ModelSetup:
 
     clinical_cat: List[str] = field(default_factory=lambda: ["gender"])
     categorical_col_maps: dict[str, int] = field(
-        default_factory=lambda: {"gender": 2,}
+        default_factory=lambda: {
+            "gender": 2,
+        }
     )
 
     clinical_cat_emb_dim: int = 32
@@ -413,8 +421,8 @@ class ModelSetup:
             "Support Devices_negbio",
         ]
     )
-    
-    performance_standard_task:str = TaskStrs.LESION_DETECTION
+
+    performance_standard_task: str = TaskStrs.LESION_DETECTION
     performance_standard_metric: str = "ap"
     random_flip: bool = True
 

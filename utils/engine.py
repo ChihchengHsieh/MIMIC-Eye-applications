@@ -186,6 +186,7 @@ def train_one_epoch(
     evaluate_on_run=True,
     params_dict: Dict = None,
     dynamic_loss_weight=None,
+    return_dt_gt=False,
 ) -> Tuple[CocoEvaluator, detect_utils.MetricLogger]:
     model.train()
     metric_logger = detect_utils.MetricLogger(delimiter="  ")
@@ -195,6 +196,9 @@ def train_one_epoch(
     header = f"Epoch: [{epoch}]"
 
     evaluators = {}
+
+    all_dts = []
+    all_gts = []
 
     lr_scheduler = None
     if epoch == 1:
@@ -309,6 +313,14 @@ def train_one_epoch(
                             [t[k]["image_id"] for t in targets], obj_dts
                         )
                     }
+
+
+                    if return_dt_gt:
+                        gts = map_every_thing_to_device(targets, "cpu")
+                        all_dts.append(res)
+                        all_gts.append(gts)
+
+
                     evaluators[k].update(res)
                 else:
                     evaluators[k].update(outputs[k]["outputs"], [t[k] for t in targets])
@@ -321,6 +333,9 @@ def train_one_epoch(
     # union = np.logical_or(target, prediction)
     # iou_score = np.sum(intersection) / np.sum(union)
     # or accuracy
+    if return_dt_gt:
+        evaluators['lesion-detection'].all_dts = all_dts
+        evaluators['lesion-detection'].all_gts = all_gts
 
     metric_logger.synchronize_between_processes()
     print("Averaged stats:", metric_logger)
@@ -333,7 +348,7 @@ def train_one_epoch(
                 e.summarize()
 
         return evaluators, metric_logger
-
+    
     return metric_logger
 
 
@@ -461,10 +476,7 @@ def evaluate(
     torch.set_num_threads(n_threads)
 
     if return_dt_gt:
-        return (
-            evaluators,
-            metric_logger,
-            (all_dts, all_gts)
-        )
+        evaluators['lesion-detection'].all_dts = all_dts
+        evaluators['lesion-detection'].all_gts = all_gts
 
     return evaluators, metric_logger

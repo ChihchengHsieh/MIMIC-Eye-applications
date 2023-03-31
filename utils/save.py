@@ -116,7 +116,8 @@ def save_checkpoint(
     os.makedirs("training_records", exist_ok=True)
     # saving the train_info.
     with open(
-        os.path.join("training_records", f"{train_info.final_model_path }.pkl"), "wb",
+        os.path.join("training_records", f"{train_info.final_model_path }.pkl"),
+        "wb",
     ) as train_info_f:
         pickle.dump(train_info, train_info_f)
 
@@ -162,19 +163,19 @@ def check_best(
                 coco=test_coco,
                 iou_types=iou_types,
                 score_thres=score_thres,
+                return_dt_gt=True,
             )
 
             test_performance = get_performance(
-                    list(model.task_performers.keys()),
-                    train_info.test_evaluator,
-                    iouThr=0.5,
-                    areaRng="all",
-                    maxDets=10,
-                )
+                dataset=test_dataloader.dataset,
+                all_tasks=list(model.task_performers.keys()),
+                evaluator=train_info.test_evaluator,
+                iouThr=0.5,
+                areaRng="all",
+                maxDets=10,
+            )
 
-            test_performance_value = test_performance[
-                setup.performance_standard_task
-            ][
+            test_performance_value = test_performance[setup.performance_standard_task][
                 setup.performance_standard_metric
             ]  # get_ap_ar(train_info.test_evaluator['lesion-detection'])
 
@@ -234,21 +235,21 @@ def end_train(
         coco=test_coco,
         iou_types=iou_types,
         score_thres=score_thres,
+        return_dt_gt=True,
     )
 
     test_performance = get_performance(
-                    list(model.task_performers.keys()),
-                    train_info.test_evaluator,
-                    iouThr=0.5,
-                    areaRng="all",
-                    maxDets=10,
-                )
+        dataset=test_dataloader.dataset,
+        all_tasks=list(model.task_performers.keys()),
+        evaluator=train_info.test_evaluator,
+        iouThr=0.5,
+        areaRng="all",
+        maxDets=10,
+    )
 
-    test_performance_value = test_performance[
-                setup.performance_standard_task
-            ][
-                setup.performance_standard_metric
-            ]  
+    test_performance_value = test_performance[setup.performance_standard_task][
+        setup.performance_standard_metric
+    ]
 
     train_info = save_checkpoint(
         setup=setup,
@@ -264,4 +265,3 @@ def end_train(
         f"The final model has been saved to: [{train_info.final_model_path}]"
     )
     return train_info
-
