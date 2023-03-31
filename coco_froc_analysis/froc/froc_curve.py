@@ -223,7 +223,6 @@ def generate_froc_curve(
     plot_output_path='froc.png',
     bounds=None,
 ):
-
     lls_accuracy = {}
     nlls_per_image = {}
 
@@ -236,7 +235,6 @@ def generate_froc_curve(
             stats, lls_accuracy,
             nlls_per_image,
         )
-
 
     if plot_title:
         fig, ax = plt.subplots(figsize=[27, 10])
@@ -261,13 +259,13 @@ def generate_froc_curve(
                 nlls,
                 lls,
                 'x--',
-                label='AI ' + stats[category_id]['name'],
+                label=stats[category_id]['name'],
             )
             ins.plot(
                 nlls,
                 lls,
                 'x--',
-                label='AI ' + stats[category_id]['name'],
+                label=stats[category_id]['name'],
             )
            
     if plot_title:
@@ -294,6 +292,6 @@ def generate_froc_curve(
             ax.set_ylim(bottom=0.05, top=1.02)
         fig.tight_layout(pad=2.0)
         fig.savefig(fname=plot_output_path, dpi=150)
-        return lls_accuracy, nlls_per_image
+        return stats, lls_accuracy, nlls_per_image
     else:
-        return lls_accuracy, nlls_per_image
+        return stats, lls_accuracy, nlls_per_image

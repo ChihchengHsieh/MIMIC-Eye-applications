@@ -168,7 +168,6 @@ def update_stats(
                 if n_pr == 0:
                     continue
                 stats[cat['id']]['NL'] += n_pr
-                stats[-1]['NL'] += n_pr
             else:
                 cost_matrix = np.ones((n_gt, n_pr)) * 1e6
 
@@ -207,9 +206,6 @@ def update_stats(
                 stats[cat['id']]['LL'] += n_true_positives
                 stats[cat['id']]['NL'] += n_false_positives
 
-                # also add to the all category
-                stats[-1]['LL'] += n_true_positives
-                stats[-1]['NL'] += n_false_positives
     return stats
 
 def init_stats(gt: dict, categories: dict) -> dict:
@@ -235,24 +231,9 @@ def init_stats(gt: dict, categories: dict) -> dict:
         for cat in categories
     }
 
-    # add all cat
-    stats.update(
-        {
-            -1: {
-                "name": "all",
-                "LL": 0,
-                "NL": 0,
-                "n_images": [],
-                "n_lesions": 0,
-            }
-        }
-    )
-
     for annotation in gt["annotations"]:
         category_id = annotation["category_id"]
         stats[category_id]["n_lesions"] += 1
-        stats[-1]['n_lesions'] += 1
-        
         # why not add the n_images here?
 
         # stats[category_id]["n_images"] += 1
