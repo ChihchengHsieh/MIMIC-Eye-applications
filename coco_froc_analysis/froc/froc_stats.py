@@ -229,7 +229,7 @@ def init_stats(gt: dict, categories: dict) -> dict:
             "name": cat["name"],
             "LL": 0,
             "NL": 0,
-            "n_images": 0,
+            "n_images": [],
             "n_lesions": 0,
         }
         for cat in categories
@@ -242,7 +242,7 @@ def init_stats(gt: dict, categories: dict) -> dict:
                 "name": "all",
                 "LL": 0,
                 "NL": 0,
-                "n_images": 0,
+                "n_images": [],
                 "n_lesions": 0,
             }
         }
@@ -254,8 +254,14 @@ def init_stats(gt: dict, categories: dict) -> dict:
         stats[-1]['n_lesions'] += 1
         
         # why not add the n_images here?
-        stats[category_id]["n_images"] += 1
-        stats[-1]["n_images"] += 1
+
+        # stats[category_id]["n_images"] += 1
+        # stats[-1]["n_images"] += 1
+
+    for image in gt["images"]:
+        image_id = image["id"]
+        for cat_id in stats:
+            stats[cat_id]["n_images"].append(image_id)
 
     # everything to be the same.
     # for image in gt["images"]:
@@ -263,7 +269,7 @@ def init_stats(gt: dict, categories: dict) -> dict:
     #     for cat_id in stats:
     #         stats[cat_id]["n_images"].append(image_id)
 
-    # for cat_id in stats:
-    #     stats[cat_id]["n_images"] = len(stats[cat_id]["n_images"])
+    for cat_id in stats:
+        stats[cat_id]["n_images"] = len(stats[cat_id]["n_images"])
 
     return stats
