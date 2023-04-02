@@ -620,8 +620,7 @@ def get_ap_ar_for_train_val(
     return train_ap_ar, val_ap_ar
 
 
-def get_performance(dataset, all_tasks, evaluator, iouThr=0.5, areaRng="all", maxDets=10):
-
+def get_performance(dataset, all_tasks, evaluator, iouThr=None, areaRng="all", maxDets=30):
     performance_dict = {}
 
     if TaskStrs.LESION_DETECTION in all_tasks:

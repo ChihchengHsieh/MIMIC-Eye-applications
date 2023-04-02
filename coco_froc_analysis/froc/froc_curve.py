@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import matplotlib.pyplot as plt
 import numpy as np
-from tqdm.auto import tqdm
+# from tqdm.auto import tqdm
 
 from ..utils import build_gt_id2annotations
 from ..utils import build_pr_id2annotations
@@ -14,6 +14,7 @@ from .froc_stats import init_stats
 from .froc_stats import update_stats
 import itertools
 from scipy import interpolate
+import os 
 
 
 def froc_point(gt, pr, score_thres, use_iou, iou_thres):
@@ -228,9 +229,7 @@ def generate_froc_curve(
     lls_accuracy = {}
     nlls_per_image = {}
 
-    for score_thres in tqdm(
-            np.linspace(0.0, 1.0, n_sample_points, endpoint=False),
-    ):
+    for score_thres in np.linspace(0.0, 1.0, n_sample_points, endpoint=False):
         stats = froc_point(gt, pr, score_thres, use_iou, iou_thres)
         # stats[-1]['n_images'] = stats[-1]['n_images'] * len(gt['categories']) # because it go through the image multiple times.
         lls_accuracy, nlls_per_image = calc_scores(

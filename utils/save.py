@@ -146,7 +146,6 @@ def check_best(
     test_coco: Dataset,
     iou_types: List[str],
     device: str,
-    score_thres: Dict[str, float] = None,
     dynamic_weight: nn.Module = None,
     test_performance=None,
 ) -> Tuple[float, float, TrainingInfo]:
@@ -162,7 +161,6 @@ def check_best(
                 params_dict=eval_params_dict,
                 coco=test_coco,
                 iou_types=iou_types,
-                score_thres=score_thres,
                 return_dt_gt=True,
             )
 
@@ -170,12 +168,9 @@ def check_best(
                 dataset=test_dataloader.dataset,
                 all_tasks=list(model.task_performers.keys()),
                 evaluator=train_info.test_evaluator,
-                iouThr=0.5,
-                areaRng="all",
-                maxDets=10,
             )
 
-            test_performance_value = test_performance[setup.performance_standard_task][
+        test_performance_value = test_performance[setup.performance_standard_task][
                 setup.performance_standard_metric
             ]  # get_ap_ar(train_info.test_evaluator['lesion-detection'])
 
@@ -209,8 +204,8 @@ def end_train(
     device: str,
     test_coco: Dataset,
     iou_types: List[str],
-    score_thres: Dict[str, float] = None,
     dynamic_weight: nn.Module = None,
+    test_performance=None,
 ) -> TrainingInfo:
 
     train_info.timer.end_training()
@@ -226,26 +221,23 @@ def end_train(
             f"Best Performance model has been saved to: [{train_info.best_performance_model_path}]"
         )
 
-    train_info.test_evaluator, test_logger = evaluate(
-        setup=setup,
-        model=model,
-        data_loader=test_dataloader,
-        device=device,
-        params_dict=eval_params_dict,
-        coco=test_coco,
-        iou_types=iou_types,
-        score_thres=score_thres,
-        return_dt_gt=True,
-    )
+    if test_performance is None:
+        train_info.test_evaluator, test_logger = evaluate(
+            setup=setup,
+            model=model,
+            data_loader=test_dataloader,
+            device=device,
+            params_dict=eval_params_dict,
+            coco=test_coco,
+            iou_types=iou_types,
+            return_dt_gt=True,
+        )
 
-    test_performance = get_performance(
-        dataset=test_dataloader.dataset,
-        all_tasks=list(model.task_performers.keys()),
-        evaluator=train_info.test_evaluator,
-        iouThr=0.5,
-        areaRng="all",
-        maxDets=10,
-    )
+        test_performance = get_performance(
+            dataset=test_dataloader.dataset,
+            all_tasks=list(model.task_performers.keys()),
+            evaluator=train_info.test_evaluator,
+        )
 
     test_performance_value = test_performance[setup.performance_standard_task][
         setup.performance_standard_metric

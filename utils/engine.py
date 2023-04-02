@@ -182,7 +182,6 @@ def train_one_epoch(
     print_freq: int,
     iou_types: List[str],
     coco: Dataset,
-    score_thres: Dict[str, float] = None,
     evaluate_on_run=True,
     params_dict: Dict = None,
     dynamic_loss_weight=None,
@@ -292,13 +291,13 @@ def train_one_epoch(
             for k in model.task_performers.keys():
                 if isinstance(evaluators[k], CocoEvaluator):
                     obj_dts = outputs[k]["outputs"]
-                    if not score_thres is None:
-                        obj_dts = [
-                            pred_thrs_check(
-                                pred, data_loader.dataset, score_thres, device
-                            )
-                            for pred in obj_dts
-                        ]
+                    # if not score_thres is None:
+                    #     obj_dts = [
+                    #         pred_thrs_check(
+                    #             pred, data_loader.dataset, score_thres, device
+                    #         )
+                    #         for pred in obj_dts
+                    #     ]
 
                     obj_dts = [
                         {k: v.detach().to(cpu_device) for k, v in t.items()}
@@ -361,7 +360,6 @@ def evaluate(
     coco: Dataset,
     iou_types: List[str],
     params_dict: Dict = None,
-    score_thres: Dict[str, float] = None,
     return_dt_gt: bool = False,
 ) -> Tuple[CocoEvaluator, detect_utils.MetricLogger]:
 
@@ -391,18 +389,6 @@ def evaluate(
 
     for data in metric_logger.log_every(data_loader, 100, header):
         inputs, targets = data_loader.dataset.prepare_input_from_data(data)
-        # inputs, targets = model.prepare(inputs, targets)
-        # inputs = map_dict_elements_to_device(inputs, device)
-        # targets = [map_dict_elements_to_device(t, device) for t in targets]
-        # clinical cat has a different structure.
-        # if "clinical" in inputs:
-        #     inputs["clinical"]["cat"] = chain_map(inputs["clinical"]["cat"])
-        #     inputs["clinical"]["cat"] = {
-        #         k: torch.stack(v) for k, v in inputs["clinical"]["cat"].items()
-        #     }
-
-        # inputs = map_2l_nest_dict_to_device(inputs, device)
-        # targets = map_2l_nest_dict_to_device(targets, device)
 
         inputs = map_every_thing_to_device(inputs, device)
         targets = map_every_thing_to_device(targets, device)
@@ -412,7 +398,6 @@ def evaluate(
 
         model_time = time.time()
         outputs = model(inputs, targets=targets)
-        # loss_dict = loss_multiplier(loss_dict)
 
         all_losses = {}
         for task in outputs.keys():
@@ -429,11 +414,11 @@ def evaluate(
         for k in model.task_performers.keys():
             if isinstance(evaluators[k], CocoEvaluator):
                 obj_dts = outputs[k]["outputs"]
-                if not score_thres is None:
-                    obj_dts = [
-                        pred_thrs_check(pred, data_loader.dataset, score_thres, device)
-                        for pred in obj_dts
-                    ]
+                # if not score_thres is None:
+                #     obj_dts = [
+                #         pred_thrs_check(pred, data_loader.dataset, score_thres, device)
+                #         for pred in obj_dts
+                #     ]
 
                 obj_dts = [
                     {k: v.detach().to(cpu_device) for k, v in t.items()}
