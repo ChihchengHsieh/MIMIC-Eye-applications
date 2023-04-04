@@ -99,8 +99,8 @@ def get_coco_eval_params(
     test_dataloader,
     detect_eval_dataset,
     iou_thrs,
-    use_iobb,
     maxDets,
+    use_iobb,
 ):
 
     df_path = train_dataloader.dataset.df_path
@@ -130,8 +130,8 @@ def get_coco_eval_params(
         eval_params_dict = get_eval_params_dict(
             detect_eval_dataset,
             iou_thrs=iou_thrs,
-            use_iobb=use_iobb,
             maxDets=maxDets,
+            use_iobb=use_iobb,
         )
 
         save_dict = {

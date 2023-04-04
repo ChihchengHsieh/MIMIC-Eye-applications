@@ -10,13 +10,6 @@ from collections import OrderedDict
 from sklearn.metrics import roc_auc_score
 
 from data.strs import TaskStrs
-from .coco_eval import (
-    CocoEvaluator,
-    external_summarize,
-    external_get_num_fps,
-    external_get_num_fns,
-    external_get_num_tps,
-)
 import utils.print as print_f
 from models.load import get_model_name, get_trained_model
 from data.constants import DEFAULT_REFLACX_LABEL_COLS
@@ -25,128 +18,103 @@ from data.constants import DEFAULT_REFLACX_LABEL_COLS
 from utils.train import num_params
 from coco_froc_analysis.froc.froc_curve import get_froc_curve, get_interpolate_froc
 
-# def get_ar_ap(
-#     evaluator: CocoEvaluator,
-#     areaRng: str = "all",
-#     iouThr: float = 0.5,
-#     maxDets: int = 10,
-# ) -> Tuple[float, float]:
 
-#     ar = external_summarize(
-#         evaluator.coco_eval["bbox"],
-#         ap=0,
-#         areaRng=areaRng,
-#         iouThr=iouThr,
-#         maxDets=maxDets,
-#         print_result=False,
-#     )
-
-#     ap = external_summarize(
-#         evaluator.coco_eval["bbox"],
-#         ap=1,
-#         areaRng=areaRng,
-#         iouThr=iouThr,
-#         maxDets=maxDets,
-#         print_result=False,
-#     )
-
-#     return ar, ap
-
+def find_match_stat(stats, ap, iouThr, areaRng, maxDets):
+    if iouThr is None:
+        return next(
+            (
+                item["mean_s"]
+                for item in stats
+                if (item["ap"] == ap)
+                and (item["iouThr"] is None)
+                and (item["areaRng"] == areaRng)
+                and (item["maxDets"] == maxDets)
+            ),
+            -1,
+        )
+    else:
+        return next(
+            (
+                item["mean_s"]
+                for item in stats
+                if (item["ap"] == ap)
+                and (item["iouThr"] == iouThr)
+                and (item["areaRng"] == areaRng)
+                and (item["maxDets"] == maxDets)
+            ),
+            -1,
+        )
 
 def get_ap_ar(
-    evaluator, iouThr=None, areaRng="all", maxDets=30,
+    evaluator,
+    iouThr=None,
+    areaRng="all",
+    maxDets=30,
 ):
-    ap = external_summarize(
-        evaluator.coco_eval["bbox"],
+    # what if we just use
+
+    ap = find_match_stat(
+        stats=evaluator.stats,
         ap=1,
         iouThr=iouThr,
         areaRng=areaRng,
         maxDets=maxDets,
-        print_result=False,
     )
 
-    ar = external_summarize(
-        evaluator.coco_eval["bbox"],
-        ap=0,
+    ar = find_match_stat(
+        stats=evaluator.stats,
+        ap=1,
         iouThr=iouThr,
         areaRng=areaRng,
         maxDets=maxDets,
-        print_result=False,
     )
+
+    # ap = external_summarize(
+    #     evaluator.coco_eval["bbox"],
+    #     ap=1,
+    #     iouThr=iouThr,
+    #     areaRng=areaRng,
+    #     maxDets=maxDets,
+    #     print_result=False,
+    # )
+
+    # ar = external_summarize(
+    #     evaluator.coco_eval["bbox"],
+    #     ap=0,
+    #     iouThr=iouThr,
+    #     areaRng=areaRng,
+    #     maxDets=maxDets,
+    #     print_result=False,
+    # )
 
     return {"ap": ap, "ar": ar}
 
+# def save_iou_results(evaluator: CocoEvaluator, suffix: str, model_path: str):
+#     os.makedirs("./eval_results", exist_ok=True)
 
-def get_num_fps(
-    evaluator, iouThr=0.5, areaRng="all", maxDets=10,
-):
-    num_fps = external_get_num_fps(
-        evaluator.coco_eval["bbox"], iouThr=iouThr, areaRng=areaRng, maxDets=maxDets,
-    )
+#     ap_ar_dict = OrderedDict(
+#         {thrs: [] for thrs in evaluator.coco_eval["bbox"].params.iouThrs}
+#     )
 
-    return num_fps
+#     for thrs in evaluator.coco_eval["bbox"].params.iouThrs:
+#         test_ap_ar = get_ap_ar(
+#             evaluator,
+#             areaRng="all",
+#             maxDets=10,
+#             iouThr=thrs,
+#         )
 
+#         ap_ar_dict[thrs].append(test_ap_ar)
 
-def get_num_fns(
-    evaluator, iouThr=0.5, areaRng="all", maxDets=10,
-):
-    num_fns = external_get_num_fns(
-        evaluator.coco_eval["bbox"], iouThr=iouThr, areaRng=areaRng, maxDets=maxDets,
-    )
+#         print(
+#             f"IoBB [{thrs:.4f}] | AR [{test_ap_ar['ar']:.4f}] | AP [{test_ap_ar['ap']:.4f}]"
+#         )
 
-    return num_fns
-
-
-def get_num_tps(
-    evaluator, iouThr=0.5, areaRng="all", maxDets=10,
-):
-    num_tps = external_get_num_tps(
-        evaluator.coco_eval["bbox"], iouThr=iouThr, areaRng=areaRng, maxDets=maxDets,
-    )
-
-    return num_tps
-
-
-def get_ap_ar_for_train_val(
-    train_evaluator: CocoEvaluator,
-    val_evaluator: CocoEvaluator,
-    iouThr=0.5,
-    areaRng="all",
-    maxDets=10,
-):
-
-    train_ap_ar = get_ap_ar(
-        train_evaluator, iouThr=iouThr, areaRng=areaRng, maxDets=maxDets,
-    )
-
-    val_ap_ar = get_ap_ar(
-        val_evaluator, iouThr=iouThr, areaRng=areaRng, maxDets=maxDets,
-    )
-
-    return train_ap_ar, val_ap_ar
-
-
-def save_iou_results(evaluator: CocoEvaluator, suffix: str, model_path: str):
-    os.makedirs("./eval_results", exist_ok=True)
-
-    ap_ar_dict = OrderedDict(
-        {thrs: [] for thrs in evaluator.coco_eval["bbox"].params.iouThrs}
-    )
-
-    for thrs in evaluator.coco_eval["bbox"].params.iouThrs:
-        test_ap_ar = get_ap_ar(evaluator, areaRng="all",
-                               maxDets=10, iouThr=thrs,)
-
-        ap_ar_dict[thrs].append(test_ap_ar)
-
-        print(
-            f"IoBB [{thrs:.4f}] | AR [{test_ap_ar['ar']:.4f}] | AP [{test_ap_ar['ap']:.4f}]"
-        )
-
-    with open(
-        os.path.join("eval_results", f"{model_path}_{suffix}.pkl"), "wb",
-    ) as training_record_f:
-        pickle.dump(ap_ar_dict, training_record_f)
+#     with open(
+#         os.path.join("eval_results", f"{model_path}_{suffix}.pkl"),
+#         "wb",
+#     ) as training_record_f:
+#         pickle.dump(ap_ar_dict, training_record_f)
 
 
 def get_thrs_evaluation_df(
@@ -272,7 +240,7 @@ def showModelOnDatasets(
     score_thrs=0.05,
 ):
     """
-    This function used for detecting the overfitting dataset.    
+    This function used for detecting the overfitting dataset.
     """
     cm = plt.get_cmap("gist_rainbow")
     NUM_COLORS = len(datasets)
@@ -350,7 +318,7 @@ def showModelsOnDatasets(
     score_thrs=0.05,
 ):
     """
-    This function used for detecting the overfitting dataset.    
+    This function used for detecting the overfitting dataset.
     """
     cm = plt.get_cmap("gist_rainbow")
     NUM_COLORS = len(datasets)
@@ -367,7 +335,10 @@ def showModelsOnDatasets(
 
     fig.suptitle("Average Precision")
 
-    for c_i, select_model, in enumerate(select_models):
+    for (
+        c_i,
+        select_model,
+    ) in enumerate(select_models):
         all_models_eval_data = {}
         for dataset in datasets:
             with open(
@@ -414,7 +385,7 @@ def showModelOnScoreThrs(
     score_thresholds=[0.5, 0.3, 0.2, 0.1, 0.05],
 ):
     """
-    This function used for detecting the overfitting dataset.    
+    This function used for detecting the overfitting dataset.
     """
     cm = plt.get_cmap("gist_rainbow")
     NUM_COLORS = len(score_thresholds)
@@ -432,7 +403,11 @@ def showModelOnScoreThrs(
             all_models_eval_data[score_thrs] = eval_data
 
     fig, axes = plt.subplots(
-        2 if include_recall else 1, figsize=figsize, dpi=80, sharex=True, squeeze=False,
+        2 if include_recall else 1,
+        figsize=figsize,
+        dpi=80,
+        sharex=True,
+        squeeze=False,
     )
 
     axes = axes[0]
@@ -478,48 +453,12 @@ def showModelOnScoreThrs(
     return fig
 
 
-# def plot_training_progress(trained_models, device):
-#     for trained_model in trained_models:
-#         _, train_info, _ = get_trained_model(
-#             trained_model,
-#             DEFAULT_REFLACX_LABEL_COLS,
-#             device,
-#             rpn_nms_thresh=0.3,
-#             box_detections_per_img=10,
-#             box_nms_thresh=0.2,
-#             rpn_score_thresh=0.0,
-#             box_score_thresh=0.05,
-#         )
-
-#         print_f.print_title("Training Info")
-#         print(train_info)
-
-#         plot_train_val_evaluators(
-#             train_ap_ars=train_info.train_ap_ars, val_ap_ars=train_info.val_ap_ars,
-#         )
-
-#         plot_losses(train_info.train_data, train_info.val_data)
-
-
-# def print_num_params(trained_models, device):
-#     for trained_model in trained_models:
-#         model, train_info, _ = get_trained_model(
-#             trained_model,
-#             DEFAULT_REFLACX_LABEL_COLS,
-#             device,
-#             image_size=512,
-#             rpn_nms_thresh=0.3,
-#             box_detections_per_img=10,
-#             box_nms_thresh=0.2,
-#             rpn_score_thresh=0.0,
-#             box_score_thresh=0.05,
-#         )
-
-#         print(f"| [{train_info.model_setup.name}] | #Params: [{num_params(model):,}] |")
-
 
 def get_mAP_mAR(
-    models, datasets: List[str], naming_map, score_thrs: float = 0.05,
+    models,
+    datasets: List[str],
+    naming_map,
+    score_thrs: float = 0.05,
 ):
 
     labels_cols = DEFAULT_REFLACX_LABEL_COLS + ["all"]
@@ -588,50 +527,36 @@ def get_mAP_mAR(
                 df.columns = [
                     "disease" if c == "disease" else f"{c}_{k}" for c in df.columns
                 ]
-                merged_df = merged_df.merge(df, "left", on="disease",)
+                merged_df = merged_df.merge(
+                    df,
+                    "left",
+                    on="disease",
+                )
 
         print_f.print_title(f"Dataset [{eval_dataset}]")
         display(merged_df)
 
         merged_df.to_csv(
-            os.path.join(
-                f"{eval_dataset}_dataset_class_ap_score_thrs_{score_thrs}.csv")
+            os.path.join(f"{eval_dataset}_dataset_class_ap_score_thrs_{score_thrs}.csv")
         )
 
         return merged_df
 
 
-def get_ap_ar_for_train_val(
-    train_evaluator: CocoEvaluator,
-    val_evaluator: CocoEvaluator,
-    iouThr=0.5,
-    areaRng="all",
-    maxDets=10,
+def get_performance(
+    dataset, all_tasks, evaluator, iouThr=None, areaRng="all", maxDets=30
 ):
-
-    train_ap_ar = get_ap_ar(
-        train_evaluator, iouThr=iouThr, areaRng=areaRng, maxDets=maxDets,
-    )
-
-    val_ap_ar = get_ap_ar(
-        val_evaluator, iouThr=iouThr, areaRng=areaRng, maxDets=maxDets,
-    )
-
-    return train_ap_ar, val_ap_ar
-
-
-def get_performance(dataset, all_tasks, evaluator, iouThr=None, areaRng="all", maxDets=30):
     performance_dict = {}
 
     if TaskStrs.LESION_DETECTION in all_tasks:
         p_dict = get_ap_ar(
-            evaluator[TaskStrs.LESION_DETECTION],
+            evaluator[TaskStrs.LESION_DETECTION].coco_eval["bbox"],
             iouThr=iouThr,
             areaRng=areaRng,
             maxDets=maxDets,
         )
 
-         # change to froc
+        # change to froc
         all_dts = evaluator[TaskStrs.LESION_DETECTION].all_dts
         all_gts = evaluator[TaskStrs.LESION_DETECTION].all_gts
 
@@ -642,26 +567,27 @@ def get_performance(dataset, all_tasks, evaluator, iouThr=None, areaRng="all", m
             plot_title=None,
             use_iou=True,
             n_sample_points=200,
-            froc_save_folder="./froc_figures"
+            froc_save_folder="./froc_figures",
         )
 
         froc_v = get_interpolate_froc(
-                stats=stats,
-                lls_accuracy=lls_accuracy,
-                nlls_per_image=nlls_per_image,
-                cat_id=None,
-                fps_per_img=[0.5, 1, 2, 4],
-                weight=True,
+            stats=stats,
+            lls_accuracy=lls_accuracy,
+            nlls_per_image=nlls_per_image,
+            cat_id=None,
+            fps_per_img=[0.5, 1, 2, 4],
+            weight=True,
         )
 
-        p_dict['froc'] = np.mean(froc_v)
+        p_dict["froc"] = np.mean(froc_v)
         performance_dict.update({TaskStrs.LESION_DETECTION: p_dict})
 
     if TaskStrs.FIXATION_GENERATION in all_tasks:
         performance_dict.update(
             {
-                TaskStrs.FIXATION_GENERATION: evaluator[TaskStrs.FIXATION_GENERATION].get_performance_dict(
-                )
+                TaskStrs.FIXATION_GENERATION: evaluator[
+                    TaskStrs.FIXATION_GENERATION
+                ].get_performance_dict()
                 # {
                 #     "iou": evaluator[TaskStrs.FIXATION_GENERATION].get_iou()
                 # }
@@ -669,27 +595,31 @@ def get_performance(dataset, all_tasks, evaluator, iouThr=None, areaRng="all", m
         )
 
     if TaskStrs.CHEXPERT_CLASSIFICATION in all_tasks:
-        performance_dict.update({
-            TaskStrs.CHEXPERT_CLASSIFICATION: evaluator[
-                TaskStrs.CHEXPERT_CLASSIFICATION
-            ].get_performance_dict()
-            #     {
-            #     "auc": evaluator[
-            #         TaskStrs.CHEXPERT_CLASSIFICATION
-            #     ].get_clf_score(roc_auc_score)
-            # }
-        })
+        performance_dict.update(
+            {
+                TaskStrs.CHEXPERT_CLASSIFICATION: evaluator[
+                    TaskStrs.CHEXPERT_CLASSIFICATION
+                ].get_performance_dict()
+                #     {
+                #     "auc": evaluator[
+                #         TaskStrs.CHEXPERT_CLASSIFICATION
+                #     ].get_clf_score(roc_auc_score)
+                # }
+            }
+        )
 
     if TaskStrs.NEGBIO_CLASSIFICATION in all_tasks:
-        performance_dict.update({
-            TaskStrs.NEGBIO_CLASSIFICATION: evaluator[
-                TaskStrs.NEGBIO_CLASSIFICATION
-            ].get_performance_dict()
-            #     {
-            #     "auc": evaluator[
-            #         TaskStrs.NEGBIO_CLASSIFICATION
-            #     ].get_clf_score(roc_auc_score)
-            # },
-        })
+        performance_dict.update(
+            {
+                TaskStrs.NEGBIO_CLASSIFICATION: evaluator[
+                    TaskStrs.NEGBIO_CLASSIFICATION
+                ].get_performance_dict()
+                #     {
+                #     "auc": evaluator[
+                #         TaskStrs.NEGBIO_CLASSIFICATION
+                #     ].get_clf_score(roc_auc_score)
+                # },
+            }
+        )
 
     return performance_dict

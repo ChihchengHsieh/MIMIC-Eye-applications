@@ -13,7 +13,6 @@ from utils.pred import pred_thrs_check
 from utils.save import get_data_from_metric_logger
 from data.datasets import ReflacxDataset, collate_fn
 from utils.detect_utils import MetricLogger
-from utils.coco_eval import CocoEvaluator, external_summarize
 
 
 def transparent_cmap(
@@ -25,9 +24,7 @@ def transparent_cmap(
     t_cmap = cmap
     t_cmap._init()
     t_cmap._lut[:, -1] = np.linspace(0, 0.8, N + 4)
-
     return t_cmap
-
 
 DISEASE_CMAP: Dict = {
     "transparent": {
@@ -139,63 +136,6 @@ def plot_loss(train_logers: Union[List[MetricLogger], List[Dict]]):
     subplots[-1].set_xlabel("Epoch")
     plt.plot()
     plt.pause(0.01)
-
-
-def plot_evaluator(
-    evaluators: List[CocoEvaluator],
-    iouThr: float = 0.5,
-    areaRng: str = "all",
-    maxDets: int = 10,
-) -> Figure:
-
-    all_precisions: List[float] = []
-    all_recalls: List[float] = []
-
-    for i in range(len(evaluators)):
-
-        all_precisions.append(
-            external_summarize(
-                evaluators[i].coco_eval["bbox"],
-                ap=1,
-                iouThr=iouThr,
-                areaRng=areaRng,
-                maxDets=maxDets,
-                print_result=False,
-            )
-        )
-
-        all_recalls.append(
-            external_summarize(
-                evaluators[i].coco_eval["bbox"],
-                ap=0,
-                iouThr=iouThr,
-                areaRng=areaRng,
-                maxDets=maxDets,
-                print_result=False,
-            )
-        )
-
-    fig, (precision_ax, recall_ax) = plt.subplots(
-        2, figsize=(10, 10), dpi=80, sharex=True,
-    )
-
-    precision_ax.set_title("Precision")
-    precision_ax.plot(
-        all_precisions, marker="o", label="Precision", color="darkorange",
-    )
-    precision_ax.legend(loc="upper left")
-    recall_ax.set_title("Recall")
-    recall_ax.plot(
-        all_recalls, marker="o", label="Recall", color="darkorange",
-    )
-    recall_ax.legend(loc="upper left")
-
-    recall_ax.set_xlabel("Epoch")
-
-    plt.plot()
-    plt.pause(0.01)
-
-    return fig
 
 
 def plot_ap_ars(
@@ -399,100 +339,6 @@ def plot_performance(performance, all_tasks, fig_title=None,) -> Figure:
 
     return fig
 
-
-def plot_train_val_evaluators(
-    train_evaluators: List[CocoEvaluator],
-    val_evaluators: List[CocoEvaluator],
-    iouThr=0.5,
-    areaRng="all",
-    maxDets=10,
-) -> Figure:
-    """
-    Plot both training and validation evaluator during training to check overfitting.
-    """
-
-    train_precisions: List[float] = []
-    train_recalls: List[float] = []
-
-    val_precisions: List[float] = []
-    val_recalls: List[float] = []
-
-    for i in range(len(train_evaluators)):
-        train_precisions.append(
-            external_summarize(
-                train_evaluators[i].coco_eval["bbox"],
-                ap=1,
-                iouThr=iouThr,
-                areaRng=areaRng,
-                maxDets=maxDets,
-                print_result=False,
-            )
-        )
-
-        val_precisions.append(
-            external_summarize(
-                val_evaluators[i].coco_eval["bbox"],
-                ap=1,
-                iouThr=iouThr,
-                areaRng=areaRng,
-                maxDets=maxDets,
-                print_result=False,
-            )
-        )
-
-        train_recalls.append(
-            external_summarize(
-                train_evaluators[i].coco_eval["bbox"],
-                ap=0,
-                iouThr=iouThr,
-                areaRng=areaRng,
-                maxDets=maxDets,
-                print_result=False,
-            )
-        )
-
-        val_recalls.append(
-            external_summarize(
-                val_evaluators[i].coco_eval["bbox"],
-                ap=0,
-                iouThr=iouThr,
-                areaRng=areaRng,
-                maxDets=maxDets,
-                print_result=False,
-            )
-        )
-
-    fig, (precision_ax, recall_ax) = plt.subplots(
-        2, figsize=(10, 10), dpi=80, sharex=True,
-    )
-
-    precision_ax.set_title("Precision")
-    precision_ax.plot(
-        train_precisions, marker="o", label="train", color="royalblue",
-    )
-    precision_ax.plot(
-        val_precisions, marker="o", label="validation", color="darkorange",
-    )
-    precision_ax.legend(loc="upper left")
-
-    recall_ax.set_title("Recall")
-    recall_ax.plot(
-        train_recalls, marker="o", label="train", color="royalblue",
-    )
-
-    recall_ax.plot(
-        val_recalls, marker="o", label="validation", color="darkorange",
-    )
-    recall_ax.legend(loc="upper left")
-
-    recall_ax.set_xlabel("Epoch")
-
-    plt.plot()
-    plt.pause(0.01)
-
-    return fig
-
-
 def plot_seg(
     target: List[Dict],
     pred: List[Dict],
@@ -626,7 +472,6 @@ def plot_bbox(
 
     return fig
 
-
 def plot_result(
     model: nn.Module,
     dataset: ReflacxDataset,
@@ -675,30 +520,6 @@ from models.load import get_trained_model
 from data.constants import DEFAULT_REFLACX_LABEL_COLS
 import utils.print as print_f
 from utils.train import num_params
-
-
-def plot_training_progress(trained_models, device):
-    for trained_model in trained_models:
-        _, train_info, _ = get_trained_model(
-            trained_model,
-            DEFAULT_REFLACX_LABEL_COLS,
-            device,
-            rpn_nms_thresh=0.3,
-            box_detections_per_img=10,
-            box_nms_thresh=0.2,
-            rpn_score_thresh=0.0,
-            box_score_thresh=0.05,
-        )
-
-        print_f.print_title("Training Info")
-        print(train_info)
-
-        plot_train_val_evaluators(
-            train_ap_ars=train_info.train_ap_ars, val_ap_ars=train_info.val_ap_ars,
-        )
-
-        plot_losses(train_info.train_data, train_info.val_data)
-
 
 def print_num_params(trained_models, device):
     for trained_model in trained_models:
