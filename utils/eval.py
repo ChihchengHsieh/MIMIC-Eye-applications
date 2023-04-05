@@ -63,7 +63,7 @@ def get_ap_ar(
 
     ar = find_match_stat(
         stats=evaluator.stats,
-        ap=1,
+        ap=0,
         iouThr=iouThr,
         areaRng=areaRng,
         maxDets=maxDets,
