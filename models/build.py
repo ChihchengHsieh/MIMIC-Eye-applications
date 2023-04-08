@@ -63,6 +63,91 @@ def create_model_from_setup(setup: ModelSetup):
 
     task_performers = nn.ModuleDict()
 
+    ########## clinical predictors 
+    age_regression_task_name = TaskStrs.AGE_REGRESSION
+    if age_regression_task_name in setup.tasks:
+        age_regression_params = RegressionParameters(
+            task_name=age_regression_task_name,
+            input_channel=fusor.out_channel,
+        )
+        age_regression_clf = RegressionPerformer(params=age_regression_params)
+        task_performers.update({age_regression_task_name: age_regression_clf})
+
+    temperature_regression_task_name = TaskStrs.TEMPERATURE_REGRESSION
+    if temperature_regression_task_name in setup.tasks:
+        temperature_regression_params = RegressionParameters(
+            task_name=temperature_regression_task_name,
+            input_channel=fusor.out_channel,
+        )
+        temperature_regression_clf = RegressionPerformer(params=temperature_regression_params)
+        task_performers.update({temperature_regression_task_name: temperature_regression_clf})
+
+    heartrate_regression_task_name = TaskStrs.HEARTRATE_REGRESSION
+    if heartrate_regression_task_name in setup.tasks:
+        heartrate_regression_params = RegressionParameters(
+            task_name=heartrate_regression_task_name,
+            input_channel=fusor.out_channel,
+        )
+        heartrate_regression_clf = RegressionPerformer(params=heartrate_regression_params)
+        task_performers.update({heartrate_regression_task_name: heartrate_regression_clf})
+
+    resprate_regression_task_name = TaskStrs.RESPRATE_REGRESSION
+    if resprate_regression_task_name in setup.tasks:
+        resprate_regression_params = RegressionParameters(
+            task_name=resprate_regression_task_name,
+            input_channel=fusor.out_channel,
+        )
+        resprate_regression_clf = RegressionPerformer(params=resprate_regression_params)
+        task_performers.update({resprate_regression_task_name: resprate_regression_clf})
+
+    o2sat_regression_task_name = TaskStrs.O2SAT_REGRESSION
+    if o2sat_regression_task_name in setup.tasks:
+        o2sat_regression_params = RegressionParameters(
+            task_name=o2sat_regression_task_name,
+            input_channel=fusor.out_channel,
+        )
+        o2sat_regression_clf = RegressionPerformer(params=o2sat_regression_params)
+        task_performers.update({o2sat_regression_task_name: o2sat_regression_clf})
+
+    sbp_regression_task_name = TaskStrs.SBP_REGRESSION
+    if sbp_regression_task_name in setup.tasks:
+        sbp_regression_params = RegressionParameters(
+            task_name=sbp_regression_task_name,
+            input_channel=fusor.out_channel,
+        )
+        sbp_regression_clf = RegressionPerformer(params=sbp_regression_params)
+        task_performers.update({sbp_regression_task_name: sbp_regression_clf})
+
+    dbp_regression_task_name = TaskStrs.TEMPERATURE_REGRESSION
+    if dbp_regression_task_name in setup.tasks:
+        dbp_regression_params = RegressionParameters(
+            task_name=dbp_regression_task_name,
+            input_channel=fusor.out_channel,
+        )
+        dbp_regression_clf = RegressionPerformer(params=dbp_regression_params)
+        task_performers.update({dbp_regression_task_name: dbp_regression_clf})
+
+    acuity_regression_task_name = TaskStrs.TEMPERATURE_REGRESSION
+    if acuity_regression_task_name in setup.tasks:
+        acuity_regression_params = RegressionParameters(
+            task_name=acuity_regression_task_name,
+            input_channel=fusor.out_channel,
+        )
+        acuity_regression_clf = RegressionPerformer(params=acuity_regression_params)
+        task_performers.update({acuity_regression_task_name: acuity_regression_clf})
+    
+    gender_classification_task_name = TaskStrs.GENDER_CLASSIFICATION
+    if gender_classification_task_name in setup.tasks:
+        gender_clf_params = ClassificationParameters(
+            task_name=gender_classification_task_name,
+            input_channel=fusor.out_channel,
+            num_classes=2,
+        )
+        gender_clf = ClassificationPerformer(params=gender_clf_params,)
+        task_performers.update({gender_classification_task_name: gender_clf})
+
+    # make the dataset, and add the tasks in model setup.
+
     lesion_detection_task_name = TaskStrs.LESION_DETECTION
     if lesion_detection_task_name in setup.tasks:
         lesion_params = ObjectDetectionParameters(
@@ -87,22 +172,22 @@ def create_model_from_setup(setup: ModelSetup):
 
     chexpert_classification_task_name = TaskStrs.CHEXPERT_CLASSIFICATION
     if chexpert_classification_task_name in setup.tasks:
-        chexpert_clf_params = ImageClassificationParameters(
+        chexpert_clf_params = ClassificationParameters(
             task_name=chexpert_classification_task_name,
             input_channel=fusor.out_channel,
             num_classes=len(setup.chexpert_label_cols),
         )
-        chexpert_clf = ImageClassificationPerformer(params=chexpert_clf_params,)
+        chexpert_clf = ClassificationPerformer(params=chexpert_clf_params,)
         task_performers.update({chexpert_classification_task_name: chexpert_clf})
 
     negbio_classification_task_name = TaskStrs.NEGBIO_CLASSIFICATION
     if negbio_classification_task_name in setup.tasks:
-        negbio_clf_params = ImageClassificationParameters(
+        negbio_clf_params = ClassificationParameters(
             task_name=negbio_classification_task_name,
             input_channel=fusor.out_channel,
             num_classes=len(setup.negbio_label_cols),
         )
-        negbio_clf = ImageClassificationPerformer(params=negbio_clf_params,)
+        negbio_clf = ClassificationPerformer(params=negbio_clf_params,)
         task_performers.update({negbio_classification_task_name: negbio_clf})
 
     model = ExtractFusePerform(

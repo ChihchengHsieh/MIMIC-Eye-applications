@@ -340,7 +340,7 @@ class HeatmapGenerationPerformer(GeneralTaskPerformer):
         }
 
 
-class ImageClassificationParameters(object):
+class ClassificationParameters(object):
     def __init__(
         self,
         task_name,
@@ -359,7 +359,7 @@ class ImageClassificationParameters(object):
         self.activation = activation
 
 
-class ImageClassificationPerformer(GeneralTaskPerformer):
+class ClassificationPerformer(GeneralTaskPerformer):
 
     """【
     Expecting targets -> {
@@ -367,11 +367,11 @@ class ImageClassificationPerformer(GeneralTaskPerformer):
     }
     """
 
-    def __init__(self, params: ImageClassificationParameters) -> None:
+    def __init__(self, params: ClassificationParameters) -> None:
         self.params = params
 
         super().__init__(
-            name="performer-image_classfication", loses=["classification_loss"]
+            name="performer-classfication", loses=["classification_loss"]
         )
 
         if params.pool not in ("max", "avg"):
@@ -409,3 +409,69 @@ class ImageClassificationPerformer(GeneralTaskPerformer):
             "outputs": output,
         }
 
+
+class RegressionParameters(object):
+    def __init__(
+        self,
+        task_name,
+        input_channel,
+        pool="avg",
+        dropout=0.2,
+        activation=None,
+    ) -> None:
+        super().__init__()
+        self.task_name = task_name
+        self.input_channel = input_channel
+        self.pool = pool
+        self.dropout = dropout
+        self.activation = activation
+
+
+class RegressionPerformer(GeneralTaskPerformer):
+
+    """【
+    Expecting targets -> {
+        regressions: tensor       
+    }
+    """
+
+    def __init__(self, params: ClassificationParameters) -> None:
+        self.params = params
+        super().__init__(
+            name="performer-regression", loses=["regression_loss"]
+        )
+
+        if params.pool not in ("max", "avg"):
+            raise ValueError(
+                "Pooling should be one of ('max', 'avg'), got {}.".format(params.pool)
+            )
+
+        self.model = nn.Sequential(
+            nn.AdaptiveAvgPool2d(1) if params == "avg" else nn.AdaptiveMaxPool2d(1),
+            nn.Flatten(),
+            nn.Dropout(p=params.dropout, inplace=True)
+            if params.dropout
+            else nn.Identity(),
+            nn.Linear(params.input_channel, 1, bias=True),
+            Activation(params.activation),
+        )
+
+        self.loss_fn = nn.MSELoss()
+
+    def forward(self, fused, targets):
+        z = fused["z"]
+
+        output = self.model(z)
+
+        loss = self.loss_fn(
+            # output, torch.stack([t["classifications"] for t in targets], dim=0).float()
+            output,
+            torch.stack(
+                [t[self.params.task_name]["regressions"] for t in targets], dim=0
+            ).float(),
+        )
+
+        return {
+            "losses": {"regression_loss": loss},
+            "outputs": output,
+        }

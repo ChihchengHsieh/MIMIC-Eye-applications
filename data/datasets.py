@@ -70,6 +70,7 @@ class ReflacxDataset(data.Dataset):
         ### input & label fields ###
         with_xrays_input: bool = True,
         with_clincal_input: bool = True,
+        with_clinical_label: bool = False,
         with_bboxes_label: bool = True,
         with_fixations_label: bool = True,
         with_fixations_input: bool = True,
@@ -81,6 +82,7 @@ class ReflacxDataset(data.Dataset):
         image_std=[0.229, 0.224, 0.225],
         image_size=512,
         random_flip=True,
+    
     ):
         # Data loading selections
 
@@ -108,6 +110,8 @@ class ReflacxDataset(data.Dataset):
             self.clinical_categorical_cols = clinical_categorical_cols
 
         self.with_xrays_input = with_xrays_input
+
+        self.with_clinical_label = with_clinical_label
 
         self.with_chexpert_label = with_chexpert_label
         self.with_negbi_label = with_negbio_label
@@ -290,6 +294,14 @@ class ReflacxDataset(data.Dataset):
         xray = self.normalize(xray)
         xray = self.resize_image(image=xray, size=[self.image_size, self.image_size])
         return xray
+    
+    def prepare_clinical_labels(self, data):
+        clinical_labels_dict = {}
+
+        for c in self.clinical_numerical_cols + self.clinical_categorical_cols:
+            clinical_labels_dict.update({c: data[c]})
+
+        return clinical_labels_dict
 
     def prepare_clinical(self, data):
         clinical_num = None
@@ -482,6 +494,83 @@ class ReflacxDataset(data.Dataset):
                 lesion_target["boxes"] = bbox
 
             target.update({TaskStrs.LESION_DETECTION: lesion_target})
+
+        if self.with_clinical_label:
+            # clinical_label_dict = self.prepare_clinical_labels(data)
+            target.update(
+                {
+                    TaskStrs.AGE_REGRESSION: {
+                        "regressions": torch.tensor(data['age'])
+                    }
+                }
+            )
+
+            target.update(
+                {
+                    TaskStrs.TEMPERATURE_REGRESSION: {
+                        "regressions": torch.tensor(data['temperature'])
+                    }
+                }
+            )
+
+            target.update(
+                {
+                    TaskStrs.HEARTRATE_REGRESSION: {
+                        "regressions": torch.tensor(data['heartrate'])
+                    }
+                }
+            ) 
+
+            target.update(
+                {
+                    TaskStrs.RESPRATE_REGRESSION: {
+                        "regressions": torch.tensor(data['resprate'])
+                    }
+                }
+            ) 
+
+            target.update(
+                {
+                    TaskStrs.O2SAT_REGRESSION: {
+                        "regressions": torch.tensor(data['o2sat'])
+                    }
+                }
+            ) 
+
+            
+            target.update(
+                {
+                    TaskStrs.SBP_REGRESSION: {
+                        "regressions": torch.tensor(data['sbp'])
+                    }
+                }
+            ) 
+
+                        
+            target.update(
+                {
+                    TaskStrs.DBP_REGRESSION: {
+                        "regressions": torch.tensor(data['dbp'])
+                    }
+                }
+            ) 
+
+            target.update(
+                {
+                    TaskStrs.ACUITY_REGRESSION: {
+                        "regressions": torch.tensor(data['acuity'])
+                    }
+                }
+            ) 
+
+            target.update(
+                {
+                    TaskStrs.GENDER_CLASSIFICATION: {
+                        "classifications": torch.tensor(data['gender'])
+                        == 1
+                    }
+                }
+            )
 
         if self.with_chexpert_label:
             target.update(

@@ -20,7 +20,7 @@ from data.utils import chain_map
 from models.components.feature_extractors import ImageFeatureExtractor
 from models.components.task_performers import (
     HeatmapGenerationPerformer,
-    ImageClassificationPerformer,
+    ClassificationPerformer,
     ObjectDetectionPerformer,
 )
 from models.frameworks import ExtractFusePerform
@@ -214,7 +214,7 @@ def train_one_epoch(
                 evaluators[k] = CocoEvaluator(coco, iou_types, params_dict)
             elif isinstance(v, HeatmapGenerationPerformer):
                 evaluators[k] = HeatmapGenerationEvaluator()
-            elif isinstance(v, ImageClassificationPerformer):
+            elif isinstance(v, ClassificationPerformer):
                 evaluators[k] = ImageClassificationEvaluator()
             else:
                 raise ValueError(f"Task-{k} doesn't have an evaluator.")
@@ -313,12 +313,10 @@ def train_one_epoch(
                         )
                     }
 
-
                     if return_dt_gt:
                         gts = map_every_thing_to_device(targets, "cpu")
                         all_dts.append(res)
                         all_gts.append(gts)
-
 
                     evaluators[k].update(res)
                 else:
@@ -332,9 +330,9 @@ def train_one_epoch(
     # union = np.logical_or(target, prediction)
     # iou_score = np.sum(intersection) / np.sum(union)
     # or accuracy
-    if return_dt_gt:
-        evaluators['lesion-detection'].all_dts = all_dts
-        evaluators['lesion-detection'].all_gts = all_gts
+    if "lesion-detection" in evaluators and return_dt_gt:
+        evaluators["lesion-detection"].all_dts = all_dts
+        evaluators["lesion-detection"].all_gts = all_gts
 
     metric_logger.synchronize_between_processes()
     print("Averaged stats:", metric_logger)
@@ -347,7 +345,7 @@ def train_one_epoch(
                 e.summarize()
 
         return evaluators, metric_logger
-    
+
     return metric_logger
 
 
@@ -382,7 +380,7 @@ def evaluate(
             evaluators[k] = CocoEvaluator(coco, iou_types, params_dict)
         elif isinstance(v, HeatmapGenerationPerformer):
             evaluators[k] = HeatmapGenerationEvaluator()
-        elif isinstance(v, ImageClassificationPerformer):
+        elif isinstance(v, ClassificationPerformer):
             evaluators[k] = ImageClassificationEvaluator()
         else:
             raise ValueError(f"Task-{k} doesn't have an evaluator.")
@@ -460,8 +458,8 @@ def evaluate(
 
     torch.set_num_threads(n_threads)
 
-    if return_dt_gt:
-        evaluators['lesion-detection'].all_dts = all_dts
-        evaluators['lesion-detection'].all_gts = all_gts
+    if "lesion-detection" in evaluators and return_dt_gt:
+        evaluators["lesion-detection"].all_dts = all_dts
+        evaluators["lesion-detection"].all_gts = all_gts
 
     return evaluators, metric_logger
