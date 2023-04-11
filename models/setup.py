@@ -72,6 +72,7 @@ class ModelSetup:
 
     # this will save the model with best validation performance across each epochs.
     save_early_stop_model: bool = True
+    normalise_clinical_num: bool = False
 
     # Will the training process will be recorded. (The TrainInfo instance will be saved with the weights of model.)
     record_training_performance: bool = True

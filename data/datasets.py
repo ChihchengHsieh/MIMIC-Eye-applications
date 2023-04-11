@@ -36,7 +36,7 @@ from .helpers import map_dict_to_device, map_target_to_device, target_processing
 from .fixation import get_fixations_dict_from_fixation_df, get_heatmap
 
 from torchvision.transforms import functional as tvF
-
+from sklearn.preprocessing import normalize
 
 def collate_fn(batch: Tuple) -> Tuple:
     return tuple(zip(*batch))
@@ -150,7 +150,7 @@ class ReflacxDataset(data.Dataset):
         ]
         self.negbio_label_cols = [c for c in self.df.columns if c.endswith("_negbio")]
 
-        if self.with_clinical_input:
+        if self.with_clinical_input or self.with_clinical_label:
             self.preprocess_clinical_df()
 
         super().__init__()
@@ -309,18 +309,18 @@ class ReflacxDataset(data.Dataset):
             not self.clinical_numerical_cols is None
             and len(self.clinical_numerical_cols) > 0
         ):
-            if self.normalise_clinical_num:
-                clinical_num = (
-                    torch.tensor(
-                        self.clinical_num_norm.transform(
-                            np.array([data[self.clinical_numerical_cols]])
-                        ),
-                        dtype=float,
-                    )
-                    .float()
-                    .squeeze()
-                )
-            else:
+            # if self.normalise_clinical_num:
+            #     clinical_num = (
+            #         torch.tensor(
+            #             self.clinical_num_norm.transform(
+            #                 np.array([data[self.clinical_numerical_cols]])
+            #             ),
+            #             dtype=float,
+            #         )
+            #         .float()
+            #         .squeeze()
+            #     )
+            # else:
                 clinical_num = torch.tensor(
                     np.array(data[self.clinical_numerical_cols], dtype=float)
                 ).float()
@@ -556,7 +556,7 @@ class ReflacxDataset(data.Dataset):
             target.update(
                 {
                     TaskStrs.GENDER_CLASSIFICATION: {
-                        "classifications": torch.tensor(data["gender"] == "F").unsqueeze(0)
+                        "classifications": torch.tensor(data["gender"]).unsqueeze(0)
                     }
                 }
             )
@@ -634,3 +634,7 @@ class ReflacxDataset(data.Dataset):
             le = LabelEncoder()
             self.df[col] = le.fit_transform(self.df[col])
             self.encoders_map[col] = le
+
+        if self.normalise_clinical_num:
+            for col in self.clinical_numerical_cols:
+                self.df[col] = normalize([self.df[col]], axis=1)[0]
