@@ -340,7 +340,7 @@ class HeatmapGenerationPerformer(GeneralTaskPerformer):
         }
 
 
-class ClassificationParameters(object):
+class MultiBinaryClassificationParameters(object):
     def __init__(
         self,
         task_name,
@@ -359,7 +359,7 @@ class ClassificationParameters(object):
         self.activation = activation
 
 
-class ClassificationPerformer(GeneralTaskPerformer):
+class MultiBinaryClassificationPerformer(GeneralTaskPerformer):
 
     """【
     Expecting targets -> {
@@ -367,7 +367,7 @@ class ClassificationPerformer(GeneralTaskPerformer):
     }
     """
 
-    def __init__(self, params: ClassificationParameters) -> None:
+    def __init__(self, params: MultiBinaryClassificationParameters) -> None:
         self.params = params
 
         super().__init__(
@@ -406,7 +406,7 @@ class ClassificationPerformer(GeneralTaskPerformer):
 
         return {
             "losses": {"classification_loss": loss},
-            "outputs": output,
+            "outputs": F.sigmoid(output),
         }
 
 
@@ -435,7 +435,7 @@ class RegressionPerformer(GeneralTaskPerformer):
     }
     """
 
-    def __init__(self, params: ClassificationParameters) -> None:
+    def __init__(self, params: MultiBinaryClassificationParameters) -> None:
         self.params = params
         super().__init__(
             name="performer-regression", loses=["regression_loss"]

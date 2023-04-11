@@ -118,7 +118,7 @@ def create_model_from_setup(setup: ModelSetup):
         sbp_regression_clf = RegressionPerformer(params=sbp_regression_params)
         task_performers.update({sbp_regression_task_name: sbp_regression_clf})
 
-    dbp_regression_task_name = TaskStrs.TEMPERATURE_REGRESSION
+    dbp_regression_task_name = TaskStrs.DBP_REGRESSION
     if dbp_regression_task_name in setup.tasks:
         dbp_regression_params = RegressionParameters(
             task_name=dbp_regression_task_name,
@@ -138,12 +138,12 @@ def create_model_from_setup(setup: ModelSetup):
     
     gender_classification_task_name = TaskStrs.GENDER_CLASSIFICATION
     if gender_classification_task_name in setup.tasks:
-        gender_clf_params = ClassificationParameters(
+        gender_clf_params = MultiBinaryClassificationParameters(
             task_name=gender_classification_task_name,
             input_channel=fusor.out_channel,
-            num_classes=2,
+            num_classes=1,
         )
-        gender_clf = ClassificationPerformer(params=gender_clf_params,)
+        gender_clf = MultiBinaryClassificationPerformer(params=gender_clf_params,)
         task_performers.update({gender_classification_task_name: gender_clf})
 
     # make the dataset, and add the tasks in model setup.
@@ -172,22 +172,22 @@ def create_model_from_setup(setup: ModelSetup):
 
     chexpert_classification_task_name = TaskStrs.CHEXPERT_CLASSIFICATION
     if chexpert_classification_task_name in setup.tasks:
-        chexpert_clf_params = ClassificationParameters(
+        chexpert_clf_params = MultiBinaryClassificationParameters(
             task_name=chexpert_classification_task_name,
             input_channel=fusor.out_channel,
             num_classes=len(setup.chexpert_label_cols),
         )
-        chexpert_clf = ClassificationPerformer(params=chexpert_clf_params,)
+        chexpert_clf = MultiBinaryClassificationPerformer(params=chexpert_clf_params,)
         task_performers.update({chexpert_classification_task_name: chexpert_clf})
 
     negbio_classification_task_name = TaskStrs.NEGBIO_CLASSIFICATION
     if negbio_classification_task_name in setup.tasks:
-        negbio_clf_params = ClassificationParameters(
+        negbio_clf_params = MultiBinaryClassificationParameters(
             task_name=negbio_classification_task_name,
             input_channel=fusor.out_channel,
             num_classes=len(setup.negbio_label_cols),
         )
-        negbio_clf = ClassificationPerformer(params=negbio_clf_params,)
+        negbio_clf = MultiBinaryClassificationPerformer(params=negbio_clf_params,)
         task_performers.update({negbio_classification_task_name: negbio_clf})
 
     model = ExtractFusePerform(

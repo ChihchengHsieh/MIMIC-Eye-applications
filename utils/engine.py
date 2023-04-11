@@ -12,6 +12,7 @@ from sklearn.metrics import (
     mean_absolute_error,
     mean_squared_error,
     roc_auc_score,
+    r2_score,
 )
 from typing import Dict, List, Tuple
 import torch.nn as nn
@@ -20,8 +21,9 @@ from data.utils import chain_map
 from models.components.feature_extractors import ImageFeatureExtractor
 from models.components.task_performers import (
     HeatmapGenerationPerformer,
-    ClassificationPerformer,
+    MultiBinaryClassificationPerformer,
     ObjectDetectionPerformer,
+    RegressionPerformer,
 )
 from models.frameworks import ExtractFusePerform
 
@@ -138,14 +140,40 @@ class HeatmapGenerationEvaluator:
         }
 
 
-class ImageClassificationEvaluator:
+class RegressionEvaluator:
     def __init__(self) -> None:
         self.preds = []
         self.gts = []
 
     def update(self, outputs, targets):
         for o in outputs:
-            self.preds.append(F.sigmoid(o).to(cpu_device).detach().numpy())
+            self.preds.append(o.to(cpu_device).detach().numpy())
+
+        for t in targets:
+            self.gts.append(t["regressions"].to(cpu_device).detach().numpy())
+
+    def get_regression_score(self, clf_score):
+        return clf_score(
+            np.array(self.gts).reshape(-1), (np.array(self.preds)).reshape(-1)
+        )
+
+    def get_performance_dict(
+        self,
+    ):
+        return {
+            "mse": self.get_regression_score(mean_squared_error),
+            "mae": self.get_regression_score(mean_absolute_error),
+            "r2": self.get_regression_score(r2_score),
+        }
+
+class ClassificationEvaluator:
+    def __init__(self) -> None:
+        self.preds = []
+        self.gts = []
+
+    def update(self, outputs, targets):
+        for o in outputs:
+            self.preds.append(o.to(cpu_device).detach().numpy())
 
         for t in targets:
             self.gts.append(t["classifications"].to(cpu_device).detach().numpy())
@@ -214,8 +242,10 @@ def train_one_epoch(
                 evaluators[k] = CocoEvaluator(coco, iou_types, params_dict)
             elif isinstance(v, HeatmapGenerationPerformer):
                 evaluators[k] = HeatmapGenerationEvaluator()
-            elif isinstance(v, ClassificationPerformer):
-                evaluators[k] = ImageClassificationEvaluator()
+            elif isinstance(v, MultiBinaryClassificationPerformer):
+                evaluators[k] = ClassificationEvaluator()
+            elif isinstance(v, RegressionPerformer):
+                evaluators[k] = RegressionEvaluator()
             else:
                 raise ValueError(f"Task-{k} doesn't have an evaluator.")
 
@@ -380,8 +410,10 @@ def evaluate(
             evaluators[k] = CocoEvaluator(coco, iou_types, params_dict)
         elif isinstance(v, HeatmapGenerationPerformer):
             evaluators[k] = HeatmapGenerationEvaluator()
-        elif isinstance(v, ClassificationPerformer):
-            evaluators[k] = ImageClassificationEvaluator()
+        elif isinstance(v, MultiBinaryClassificationPerformer):
+            evaluators[k] = ClassificationEvaluator()
+        elif isinstance(v, RegressionPerformer):
+                evaluators[k] = RegressionEvaluator()
         else:
             raise ValueError(f"Task-{k} doesn't have an evaluator.")
 
@@ -436,6 +468,11 @@ def evaluate(
 
                 evaluators[k].update(res)
             else:
+                ## add the outputs and groundtruths
+                
+
+
+                
                 evaluators[k].update(outputs[k]["outputs"], [t[k] for t in targets])
 
             # model.evaluators = evaluators
@@ -463,3 +500,4 @@ def evaluate(
         evaluators["lesion-detection"].all_gts = all_gts
 
     return evaluators, metric_logger
+

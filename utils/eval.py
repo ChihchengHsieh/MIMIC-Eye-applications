@@ -45,6 +45,7 @@ def find_match_stat(stats, ap, iouThr, areaRng, maxDets):
             -1,
         )
 
+
 def get_ap_ar(
     evaluator,
     iouThr=None,
@@ -88,6 +89,7 @@ def get_ap_ar(
     # )
 
     return {"ap": ap, "ar": ar}
+
 
 # def save_iou_results(evaluator: CocoEvaluator, suffix: str, model_path: str):
 #     os.makedirs("./eval_results", exist_ok=True)
@@ -453,7 +455,6 @@ def showModelOnScoreThrs(
     return fig
 
 
-
 def get_mAP_mAR(
     models,
     datasets: List[str],
@@ -619,6 +620,92 @@ def get_performance(
                 #         TaskStrs.NEGBIO_CLASSIFICATION
                 #     ].get_clf_score(roc_auc_score)
                 # },
+            }
+        )
+
+    """
+    clinical data
+    """
+    
+    if TaskStrs.AGE_REGRESSION in all_tasks:
+        performance_dict.update(
+            {
+                TaskStrs.AGE_REGRESSION: evaluator[
+                    TaskStrs.AGE_REGRESSION
+                ].get_performance_dict()
+            }
+        )
+    if TaskStrs.TEMPERATURE_REGRESSION in all_tasks:
+
+        performance_dict.update(
+            {
+                TaskStrs.TEMPERATURE_REGRESSION: evaluator[
+                    TaskStrs.TEMPERATURE_REGRESSION
+                ].get_performance_dict()
+            }
+        )
+    if TaskStrs.HEARTRATE_REGRESSION in all_tasks:
+
+        performance_dict.update(
+            {
+                TaskStrs.HEARTRATE_REGRESSION: evaluator[
+                    TaskStrs.HEARTRATE_REGRESSION
+                ].get_performance_dict()
+            }
+        )
+    if TaskStrs.RESPRATE_REGRESSION in all_tasks:
+
+        performance_dict.update(
+            {
+                TaskStrs.RESPRATE_REGRESSION: evaluator[
+                    TaskStrs.RESPRATE_REGRESSION
+                ].get_performance_dict()
+            }
+        )
+    if TaskStrs.O2SAT_REGRESSION in all_tasks:
+
+        performance_dict.update(
+            {
+                TaskStrs.O2SAT_REGRESSION: evaluator[
+                    TaskStrs.O2SAT_REGRESSION
+                ].get_performance_dict()
+            }
+        )
+    if TaskStrs.SBP_REGRESSION in all_tasks:
+
+        performance_dict.update(
+            {
+                TaskStrs.SBP_REGRESSION: evaluator[
+                    TaskStrs.SBP_REGRESSION
+                ].get_performance_dict()
+            }
+        )
+    if TaskStrs.DBP_REGRESSION in all_tasks:
+
+        performance_dict.update(
+            {
+                TaskStrs.DBP_REGRESSION: evaluator[
+                    TaskStrs.DBP_REGRESSION
+                ].get_performance_dict()
+            }
+        )
+    if TaskStrs.ACUITY_REGRESSION in all_tasks:
+
+        performance_dict.update(
+            {
+                TaskStrs.ACUITY_REGRESSION: evaluator[
+                    TaskStrs.ACUITY_REGRESSION
+                ].get_performance_dict()
+            }
+        )
+
+    if TaskStrs.GENDER_CLASSIFICATION in all_tasks:
+
+        performance_dict.update(
+            {
+                TaskStrs.GENDER_CLASSIFICATION: evaluator[
+                    TaskStrs.GENDER_CLASSIFICATION
+                ].get_performance_dict()
             }
         )
 

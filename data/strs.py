@@ -4,7 +4,7 @@ class TaskStrs:
     CHEXPERT_CLASSIFICATION = "chexpert-classification"
     FIXATION_GENERATION = "fixation-generation"
     
-    AGE_REGRESSION = "gender-regression"
+    AGE_REGRESSION = "age-regression"
     TEMPERATURE_REGRESSION = "temperature-regression"
     HEARTRATE_REGRESSION = "heartrate-regression"
     RESPRATE_REGRESSION = "resprate-regression"

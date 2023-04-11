@@ -82,7 +82,6 @@ class ReflacxDataset(data.Dataset):
         image_std=[0.229, 0.224, 0.225],
         image_size=512,
         random_flip=True,
-    
     ):
         # Data loading selections
 
@@ -102,16 +101,15 @@ class ReflacxDataset(data.Dataset):
         self.all_disease_cols: List[str] = all_disease_cols
         self.repetitive_label_map: Dict[str, List[str]] = repetitive_label_map
         self.dataset_mode: str = dataset_mode
+        self.with_clinical_label = with_clinical_label
 
-        self.with_clinical = with_clincal_input
-        if self.with_clinical:
+        self.with_clinical_input = with_clincal_input
+        if self.with_clinical_input or self.with_clinical_label:
             self.clinical_numerical_cols = clinical_numerical_cols
             self.normalise_clinical_num = normalise_clinical_num
             self.clinical_categorical_cols = clinical_categorical_cols
 
         self.with_xrays_input = with_xrays_input
-
-        self.with_clinical_label = with_clinical_label
 
         self.with_chexpert_label = with_chexpert_label
         self.with_negbi_label = with_negbio_label
@@ -130,7 +128,9 @@ class ReflacxDataset(data.Dataset):
 
         # deciding which to df load
         self.df_path = (
-            "reflacx_clinical_eye.csv" if self.with_clinical else "reflacx_eye.csv"
+            "reflacx_clinical_eye.csv"
+            if (self.with_clinical_input or self.with_clinical_label)
+            else "reflacx_eye.csv"
         )
         self.df: pd.DataFrame = pd.read_csv(
             os.path.join(spreadsheets_folder, self.df_path), index_col=0
@@ -150,7 +150,7 @@ class ReflacxDataset(data.Dataset):
         ]
         self.negbio_label_cols = [c for c in self.df.columns if c.endswith("_negbio")]
 
-        if self.with_clinical:
+        if self.with_clinical_input:
             self.preprocess_clinical_df()
 
         super().__init__()
@@ -294,7 +294,7 @@ class ReflacxDataset(data.Dataset):
         xray = self.normalize(xray)
         xray = self.resize_image(image=xray, size=[self.image_size, self.image_size])
         return xray
-    
+
     def prepare_clinical_labels(self, data):
         clinical_labels_dict = {}
 
@@ -373,8 +373,8 @@ class ReflacxDataset(data.Dataset):
         fix = self.resize_image(image=fix, size=[self.image_size, self.image_size])
         return fix
 
-    def resize_boxes(self,
-        boxes: torch.Tensor, original_size: List[int], new_size: List[int]
+    def resize_boxes(
+        self, boxes: torch.Tensor, original_size: List[int], new_size: List[int]
     ) -> torch.Tensor:
         ratios = [
             torch.tensor(s, dtype=torch.float32, device=boxes.device)
@@ -393,14 +393,18 @@ class ReflacxDataset(data.Dataset):
     def get_lesion_detection_labels(self, idx, data, original_size, new_size):
         bboxes_df = self.generate_bboxes_df(pd.read_csv(data["bbox_path"]))
         bboxes = np.array(bboxes_df[self.box_coord_cols], dtype=float)
-          # x1, y1, x2, y2
+        # x1, y1, x2, y2
         unsized_boxes = bboxes
         bboxes = torch.tensor(bboxes)
-        bboxes = self.resize_boxes(boxes=bboxes, original_size=original_size, new_size=new_size)
+        bboxes = self.resize_boxes(
+            boxes=bboxes, original_size=original_size, new_size=new_size
+        )
         # resize the bb
         # Calculate area of boxes.
         area = (bboxes[:, 3] - bboxes[:, 1]) * (bboxes[:, 2] - bboxes[:, 0])
-        unsized_area = (unsized_boxes[:, 3] - unsized_boxes[:, 1]) * (unsized_boxes[:, 2] - unsized_boxes[:, 0])
+        unsized_area = (unsized_boxes[:, 3] - unsized_boxes[:, 1]) * (
+            unsized_boxes[:, 2] - unsized_boxes[:, 0]
+        )
         labels = torch.tensor(
             np.array(bboxes_df["label"].apply(lambda l: self.disease_to_idx(l))).astype(
                 int
@@ -454,7 +458,7 @@ class ReflacxDataset(data.Dataset):
                 xray = xray.flip(-1)
             input_dict.update({SourceStrs.XRAYS: {"images": xray}})
 
-        if self.with_clinical:
+        if self.with_clinical_input:
             clinical_cat, clinical_num = self.prepare_clinical(data)
             input_dict.update(
                 {SourceStrs.CLINICAL: {"cat": clinical_cat, "num": clinical_num}}
@@ -498,17 +502,13 @@ class ReflacxDataset(data.Dataset):
         if self.with_clinical_label:
             # clinical_label_dict = self.prepare_clinical_labels(data)
             target.update(
-                {
-                    TaskStrs.AGE_REGRESSION: {
-                        "regressions": torch.tensor(data['age'])
-                    }
-                }
+                {TaskStrs.AGE_REGRESSION: {"regressions": torch.tensor(data["age"])}}
             )
 
             target.update(
                 {
                     TaskStrs.TEMPERATURE_REGRESSION: {
-                        "regressions": torch.tensor(data['temperature'])
+                        "regressions": torch.tensor(data["temperature"])
                     }
                 }
             )
@@ -516,58 +516,47 @@ class ReflacxDataset(data.Dataset):
             target.update(
                 {
                     TaskStrs.HEARTRATE_REGRESSION: {
-                        "regressions": torch.tensor(data['heartrate'])
+                        "regressions": torch.tensor(data["heartrate"])
                     }
                 }
-            ) 
+            )
 
             target.update(
                 {
                     TaskStrs.RESPRATE_REGRESSION: {
-                        "regressions": torch.tensor(data['resprate'])
+                        "regressions": torch.tensor(data["resprate"])
                     }
                 }
-            ) 
+            )
 
             target.update(
                 {
                     TaskStrs.O2SAT_REGRESSION: {
-                        "regressions": torch.tensor(data['o2sat'])
+                        "regressions": torch.tensor(data["o2sat"])
                     }
                 }
-            ) 
+            )
 
-            
             target.update(
-                {
-                    TaskStrs.SBP_REGRESSION: {
-                        "regressions": torch.tensor(data['sbp'])
-                    }
-                }
-            ) 
+                {TaskStrs.SBP_REGRESSION: {"regressions": torch.tensor(data["sbp"])}}
+            )
 
-                        
             target.update(
-                {
-                    TaskStrs.DBP_REGRESSION: {
-                        "regressions": torch.tensor(data['dbp'])
-                    }
-                }
-            ) 
+                {TaskStrs.DBP_REGRESSION: {"regressions": torch.tensor(data["dbp"])}}
+            )
 
             target.update(
                 {
                     TaskStrs.ACUITY_REGRESSION: {
-                        "regressions": torch.tensor(data['acuity'])
+                        "regressions": torch.tensor(data["acuity"])
                     }
                 }
-            ) 
+            )
 
             target.update(
                 {
                     TaskStrs.GENDER_CLASSIFICATION: {
-                        "classifications": torch.tensor(data['gender'])
-                        == 1
+                        "classifications": torch.tensor(data["gender"] == "F").unsqueeze(0)
                     }
                 }
             )

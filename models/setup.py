@@ -226,3 +226,5 @@ class ModelSetup:
     random_flip: bool = True
 
     use_dynamic_weight: bool = False
+
+    with_clinical_label: bool = False
