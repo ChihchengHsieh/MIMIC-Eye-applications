@@ -1,5 +1,6 @@
 from datetime import datetime
 from .setup import ModelSetup
+import numpy as np
 
 
 class TrainingTimer(object):
@@ -51,7 +52,7 @@ class TrainingInfo:
         self.last_train_evaluator = None
         self.test_evaluator = None
 
-        self.best_val_performance = -1
+        self.best_val_performance = -np.inf
         self.best_performance_model_path = None
 
         self.final_model_path = None

@@ -38,8 +38,21 @@ from .fixation import get_fixations_dict_from_fixation_df, get_heatmap
 from torchvision.transforms import functional as tvF
 from sklearn.preprocessing import normalize
 
+
 def collate_fn(batch: Tuple) -> Tuple:
     return tuple(zip(*batch))
+
+
+training_clinical_mean_std = {
+    "age": {"mean": 62.924050632911396, "std": 18.486667896662354},
+    "temperature": {"mean": 98.08447784810126, "std": 2.7465209372955712},
+    "heartrate": {"mean": 85.95379746835444, "std": 18.967507646992733},
+    "resprate": {"mean": 18.15221518987342, "std": 2.6219004903965004},
+    "o2sat": {"mean": 97.85411392405064, "std": 2.6025150031174946},
+    "sbp": {"mean": 133.0685126582279, "std": 25.523304795054102},
+    "dbp": {"mean": 74.01107594936708, "std": 16.401336318103716},
+    "acuity": {"mean": 2.2610759493670884, "std": 0.7045539799670345},
+}
 
 
 class ReflacxDataset(data.Dataset):
@@ -321,9 +334,9 @@ class ReflacxDataset(data.Dataset):
             #         .squeeze()
             #     )
             # else:
-                clinical_num = torch.tensor(
-                    np.array(data[self.clinical_numerical_cols], dtype=float)
-                ).float()
+            clinical_num = torch.tensor(
+                np.array(data[self.clinical_numerical_cols], dtype=float)
+            ).float()
 
         clinical_cat = None
         if (
@@ -636,5 +649,11 @@ class ReflacxDataset(data.Dataset):
             self.encoders_map[col] = le
 
         if self.normalise_clinical_num:
+            self.clinical_std_mean = {}
+
             for col in self.clinical_numerical_cols:
-                self.df[col] = normalize([self.df[col]], axis=1)[0]
+                # calculate mean and std
+                mean = training_clinical_mean_std[col]['mean']
+                std = training_clinical_mean_std[col]['std']
+                self.df[col] = (self.df[col] - mean) / std
+                # self.df[col] = normalize([self.df[col]], axis=1)[0]
