@@ -18,7 +18,7 @@ from torchvision.models.detection.faster_rcnn import (
 
 from torchvision.models.detection.transform import resize_boxes, resize_keypoints
 from torchvision.models.detection.roi_heads import paste_masks_in_image
-from data.strs import TaskStrs
+from data.strs import SourceStrs, TaskStrs
 from models.components.general import Activation, map_inputs, map_labels
 
 from models.unet import UNetDecoder
@@ -49,7 +49,17 @@ class GeneralTaskPerformer(nn.Module):
 
 
 class ObjectDetectionParameters(object):
-    def __init__(self, task_name, out_channels, num_classes, image_size,) -> None:
+    def __init__(
+        self,
+        task_name,
+        backbone_out_channels,
+        num_classes,
+        image_size,
+        use_1D_fusion,
+        fusion_1D_source,
+        use_mask,
+        clinical_ch=None,
+    ) -> None:
 
         # rpn params
         self.rpn_pre_nms_top_n_train = 2000
@@ -95,14 +105,21 @@ class ObjectDetectionParameters(object):
         self.transform_max_size = 1333
 
         self.task_name = task_name
-        self.out_channels = out_channels
+        self.backbone_out_channels = backbone_out_channels
         self.num_classes = num_classes
 
         self.image_size = image_size
 
+        self.use_1D_fusion = use_1D_fusion
+        self.fusion_1D_source = fusion_1D_source
+        self.clinical_ch = clinical_ch
+        self.use_mask:bool = use_mask
 
 class ObjectDetectionPerformer(GeneralTaskPerformer):
-    def __init__(self, params: ObjectDetectionParameters,) -> None:
+    def __init__(
+        self,
+        params: ObjectDetectionParameters,
+    ) -> None:
         super().__init__(
             name="performer-object_detection",
             loses=[
@@ -120,8 +137,38 @@ class ObjectDetectionPerformer(GeneralTaskPerformer):
         self.__init_roi_heads(self.params)
         self.__init_transform(self.params)
 
+        if self.params.use_mask:
+            self.__init_mask(params)
+
+    def __init_mask(self, params: ObjectDetectionParameters):
+        if params.use_mask:
+            mask_roi_pool = MultiScaleRoIAlign(
+                featmap_names=["0", "1", "2", "3"], output_size=14, sampling_ratio=2
+            )
+
+            mask_layers = (256, 256, 256, 256)
+            mask_dilation = 1
+            mask_head = MaskRCNNHeads(params.backbone_out_channels, mask_layers, mask_dilation)
+
+            mask_predictor_in_channels = 256  # == mask_layers[-1]
+            mask_dim_reduced = 256
+            mask_predictor = MaskRCNNPredictor(
+                mask_predictor_in_channels, mask_dim_reduced, self.params.num_classes,
+            )
+
+            self.roi_heads.mask_roi_pool = mask_roi_pool
+            self.roi_heads.mask_head = mask_head
+            self.roi_heads.mask_predictor = mask_predictor
+ 
     def forward(self, fused, targets):
         z = fused["z"]
+
+        tabular_input = None
+        if self.params.use_1D_fusion:
+            k = f"{SourceStrs.CLINICAL}_tabular_input"
+            all_keys = ", ".join(list(fused.keys()))
+            assert k in fused, f"Not {k} is found in fused dictionary. The keys in dictionary are {all_keys}."
+            tabular_input = fused[k]
 
         batch_size = z.shape[0]
         scaled_image_sizes = [
@@ -134,7 +181,11 @@ class ObjectDetectionPerformer(GeneralTaskPerformer):
         proposals, proposal_losses = self.rpn(z, targets)
 
         detections, detector_losses = self.roi_heads(
-            z, proposals, scaled_image_sizes, targets,
+            z,
+            proposals,
+            scaled_image_sizes,
+            targets,
+            tabular_input=tabular_input,
         )
 
         # print(detections)
@@ -159,7 +210,10 @@ class ObjectDetectionPerformer(GeneralTaskPerformer):
         }
 
     def postprocess(
-        self, result, image_shapes, original_image_sizes,
+        self,
+        result,
+        image_shapes,
+        original_image_sizes,
     ):
         # if self.training:
         #     return result
@@ -178,7 +232,7 @@ class ObjectDetectionPerformer(GeneralTaskPerformer):
         )
 
         rpn_head = RPNHead(
-            self.params.out_channels, rpn_anchor_generator.num_anchors_per_location()[0]
+            self.params.backbone_out_channels, rpn_anchor_generator.num_anchors_per_location()[0]
         )
 
         rpn_pre_nms_top_n = dict(
@@ -217,9 +271,14 @@ class ObjectDetectionPerformer(GeneralTaskPerformer):
         #     )
 
         resolution = box_roi_pool.output_size[0]
+
+        in_ch = self.params.backbone_out_channels * resolution**2
         box_head = XAMITwoMLPHead(
-            self.params.out_channels * resolution ** 2,
-            params.XAMITwoMLPHead_representation_size,
+            use_1D_fusion=params.use_1D_fusion,
+            in_channels=  in_ch + self.params.clinical_ch if self.params.use_1D_fusion else in_ch
+            if params.use_1D_fusion
+            else in_ch,
+            representation_size=params.XAMITwoMLPHead_representation_size,
             dropout_rate=params.XAMITwoMLPHead_dropout_rate,
         )
 
@@ -289,7 +348,7 @@ class HeatmapGenerationPerformer(GeneralTaskPerformer):
 
     """
     Expecting targets -> {
-        heatmap: tensor        
+        heatmap: tensor
     }
     """
 
@@ -299,7 +358,7 @@ class HeatmapGenerationPerformer(GeneralTaskPerformer):
         self.model = UNetDecoder(
             self.params.input_channel, self.params.decoder_channels
         )
-        self.loss_fn = nn.BCELoss() # not logits loss
+        self.loss_fn = nn.BCELoss()  # not logits loss
 
         image_mean = [0.485, 0.456, 0.406]
         image_std = [0.229, 0.224, 0.225]
@@ -318,7 +377,7 @@ class HeatmapGenerationPerformer(GeneralTaskPerformer):
         z = fused["z"]
 
         output = self.model(z)
-        output = F.sigmoid(output) # sigmoid 
+        output = F.sigmoid(output)  # sigmoid
         # output = F.softmax(output.view(1, -1), dim=1) # .view(1, self.params.image_size, self.params.image_size)
 
         loss = self.loss_fn(
@@ -363,16 +422,14 @@ class MultiBinaryClassificationPerformer(GeneralTaskPerformer):
 
     """【
     Expecting targets -> {
-        classifications: tensor       
+        classifications: tensor
     }
     """
 
     def __init__(self, params: MultiBinaryClassificationParameters) -> None:
         self.params = params
 
-        super().__init__(
-            name="performer-classfication", loses=["classification_loss"]
-        )
+        super().__init__(name="performer-classfication", loses=["classification_loss"])
 
         if params.pool not in ("max", "avg"):
             raise ValueError(
@@ -431,15 +488,13 @@ class RegressionPerformer(GeneralTaskPerformer):
 
     """【
     Expecting targets -> {
-        regressions: tensor       
+        regressions: tensor
     }
     """
 
     def __init__(self, params: MultiBinaryClassificationParameters) -> None:
         self.params = params
-        super().__init__(
-            name="performer-regression", loses=["regression_loss"]
-        )
+        super().__init__(name="performer-regression", loses=["regression_loss"])
 
         if params.pool not in ("max", "avg"):
             raise ValueError(

@@ -69,6 +69,7 @@ class ReflacxDataset(data.Dataset):
         clinical_numerical_cols,
         clinical_categorical_cols,
         normalise_clinical_num=False,
+        bbox_to_mask=True,
         split_str: str = None,
         dataset_mode: str = "normal",
         labels_cols: List[str] = DEFAULT_REFLACX_LABEL_COLS,
@@ -95,6 +96,7 @@ class ReflacxDataset(data.Dataset):
         image_std=[0.229, 0.224, 0.225],
         image_size=512,
         random_flip=True,
+        use_clinical_df=False,
     ):
         # Data loading selections
 
@@ -105,6 +107,8 @@ class ReflacxDataset(data.Dataset):
         self.image_mean = image_mean
         self.image_std = image_std
 
+        self.bbox_to_mask = bbox_to_mask
+        self.use_clinical_df = use_clinical_df
         self.MIMIC_EYE_PATH = MIMIC_EYE_PATH
         self.path_cols = path_cols
         self.path_cols: List[str] = path_cols
@@ -117,7 +121,8 @@ class ReflacxDataset(data.Dataset):
         self.with_clinical_label = with_clinical_label
 
         self.with_clinical_input = with_clincal_input
-        if self.with_clinical_input or self.with_clinical_label:
+        self.should_load_clinical_df = self.with_clinical_input or self.with_clinical_label or self.use_clinical_df
+        if self.should_load_clinical_df:
             self.clinical_numerical_cols = clinical_numerical_cols
             self.normalise_clinical_num = normalise_clinical_num
             self.clinical_categorical_cols = clinical_categorical_cols
@@ -142,9 +147,11 @@ class ReflacxDataset(data.Dataset):
         # deciding which to df load
         self.df_path = (
             "reflacx_clinical_eye.csv"
-            if (self.with_clinical_input or self.with_clinical_label)
+            if (self.should_load_clinical_df)
             else "reflacx_eye.csv"
         )
+
+        # raise StopIteration(f"The dataset now loading is {self.df_path}")
         self.df: pd.DataFrame = pd.read_csv(
             os.path.join(spreadsheets_folder, self.df_path), index_col=0
         )
@@ -454,6 +461,7 @@ class ReflacxDataset(data.Dataset):
 
         # it's necesary to load the image, becasue it will be used to run the transform.
         xray: Image = Image.open(data["image_path"]).convert("RGB")
+        xray_height, xray_width =  xray.height, xray.width
         xray = tvF.to_tensor(xray)
         original_image_size = xray.shape[-2:]
 
@@ -509,6 +517,15 @@ class ReflacxDataset(data.Dataset):
                 bbox = lesion_target["boxes"]
                 bbox[:, [0, 2]] = width - bbox[:, [2, 0]]
                 lesion_target["boxes"] = bbox
+
+            if self.bbox_to_mask:
+                # generate masks from bboxes
+                num_objs = lesion_target["boxes"].shape[0]
+                masks = torch.zeros((num_objs, xray_height, xray_width), dtype=torch.uint8)
+                for i, b in enumerate(lesion_target["boxes"]):
+                    b = b.int()
+                    masks[i, b[1] : b[3], b[0] : b[2]] = 1
+                lesion_target["masks"] = masks
 
             target.update({TaskStrs.LESION_DETECTION: lesion_target})
 

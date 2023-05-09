@@ -70,13 +70,15 @@ def get_normal_backbone(
             torchvision.models.resnet18(pretrained=pretrained_backbone)
         )
         backbone.out_channels = 512
-        backbone.out_dim = 1
+        # backbone.out_dim = 1
+        backbone.out_dim = setup.image_size / 32
     elif setup.backbone == "resnet50":
         backbone = _to_resnet_feature_extract_backbone(
             torchvision.models.resnet50(pretrained=pretrained_backbone)
         )
         backbone.out_channels = 2048
-        backbone.out_dim = 1
+        # backbone.out_dim = 1
+        backbone.out_dim = setup.image_size / 32
     elif setup.backbone == "mobilenet_v3":
         backbone = _remove_last(
             torchvision.models.mobilenet_v3_small(pretrained=pretrained_backbone)

@@ -41,13 +41,18 @@ import torch.nn.functional as F
 
 cpu_device = torch.device("cpu")
 
+class MemoryUsageReocrds():
+    cpu_memory = []
+    gpu_memory = []
+    
+
 
 def get_iou_types(model: nn.Module, setup: ModelSetup) -> List[str]:
     model_without_ddp = model
     if isinstance(model, torch.nn.parallel.DistributedDataParallel):
         model_without_ddp = model.module
     iou_types = ["bbox"]
-    if setup.use_mask:
+    if setup.lesion_detection_use_mask:
         iou_types.append("segm")
     if isinstance(model_without_ddp, torchvision.models.detection.KeypointRCNN):
         iou_types.append("keypoints")
@@ -257,10 +262,25 @@ def train_one_epoch(
                 e.fix_backbone_weights(False)
 
     for data in metric_logger.log_every(data_loader, print_freq, header):
+        ### Print CPU memory usage here to debug ###
+        # from utils.print import print_cpu_ram_usage, print_gpu_ram_usage
+
+        # print("cp1")
+        # print_cpu_ram_usage()
+        # print_gpu_ram_usage()
+        # MemoryUsageReocrds.cpu_memory.append(print_cpu_ram_usage())
+        # MemoryUsageReocrds.gpu_memory.append(print_gpu_ram_usage())
+
         inputs, targets = data_loader.dataset.prepare_input_from_data(data)
         # inputs, targets = model.prepare(inputs, targets)
         inputs = map_every_thing_to_device(inputs, device)
         targets = map_every_thing_to_device(targets, device)
+
+        # print("cp2")
+        # print_cpu_ram_usage()
+        # print_gpu_ram_usage()
+        # MemoryUsageReocrds.cpu_memory.append(print_cpu_ram_usage())
+        # MemoryUsageReocrds.gpu_memory.append(print_gpu_ram_usage())
 
         with torch.cuda.amp.autocast(enabled=False):
             outputs = model(inputs, targets=targets)
@@ -297,6 +317,12 @@ def train_one_epoch(
                 # all_losses['lesion-detection_performer-object_detection_loss_objectness'] *= 1e+2
                 losses = sum(loss for loss in all_losses.values())
 
+        # print("cp3")
+        # print_cpu_ram_usage()
+        # print_gpu_ram_usage()
+        # MemoryUsageReocrds.cpu_memory.append(print_cpu_ram_usage())
+        # MemoryUsageReocrds.gpu_memory.append(print_gpu_ram_usage())
+
         # reduce losses over all GPUs for logging purposes
         loss_dict_reduced = detect_utils.reduce_dict(all_losses)
         losses_reduced = sum(loss for loss in loss_dict_reduced.values())
@@ -306,16 +332,35 @@ def train_one_epoch(
             print(loss_dict_reduced)
             sys.exit(1)
 
+        # print("cp4")
+        # print_cpu_ram_usage()
+        # print_gpu_ram_usage()
+        # MemoryUsageReocrds.cpu_memory.append(print_cpu_ram_usage())
+        # MemoryUsageReocrds.gpu_memory.append(print_gpu_ram_usage())
+
         optimizer.zero_grad()
 
         losses.backward()
         optimizer.step()
+
+        # print("cp5")
+        # print_cpu_ram_usage()
+        # print_gpu_ram_usage()
+        # MemoryUsageReocrds.cpu_memory.append(print_cpu_ram_usage())
+        # MemoryUsageReocrds.gpu_memory.append(print_gpu_ram_usage())
 
         if lr_scheduler is not None:
             lr_scheduler.step()
 
         metric_logger.update(loss=losses_reduced, **loss_dict_reduced)
         metric_logger.update(lr=optimizer.param_groups[0]["lr"])
+
+        # print("cp6")
+        # print_cpu_ram_usage()
+        # print_gpu_ram_usage()
+        # MemoryUsageReocrds.cpu_memory.append(print_cpu_ram_usage())
+        # MemoryUsageReocrds.gpu_memory.append(print_gpu_ram_usage())
+
 
         if evaluate_on_run:
             for k in model.task_performers.keys():
@@ -328,6 +373,12 @@ def train_one_epoch(
                     #         )
                     #         for pred in obj_dts
                     #     ]
+
+                    # print("cp7")
+                    # print_cpu_ram_usage()
+                    # print_gpu_ram_usage()
+                    # MemoryUsageReocrds.cpu_memory.append(print_cpu_ram_usage())
+                    # MemoryUsageReocrds.gpu_memory.append(print_gpu_ram_usage())
 
                     obj_dts = [
                         {k: v.detach().to(cpu_device) for k, v in t.items()}
@@ -343,16 +394,45 @@ def train_one_epoch(
                         )
                     }
 
+                    # print("cp8")
+                    # print_cpu_ram_usage()
+                    # print_gpu_ram_usage()
+                    # MemoryUsageReocrds.cpu_memory.append(print_cpu_ram_usage())
+                    # MemoryUsageReocrds.gpu_memory.append(print_gpu_ram_usage())
+                    
+
                     if return_dt_gt:
+                        # why the fixation model is okay with it?
                         gts = map_every_thing_to_device(targets, "cpu")
+                        # print(list(res.values())[0].keys())
+                        # print(gts[0]['lesion-detection'].keys())
+                        # raise StopIteration()s
+
+
+                        import sys
+
+                        # print("The size of the res is {} bytes".format(sys.getsizeof(res)))
+                        # print("The size of the gts is {} bytes".format(sys.getsizeof(gts)))
+
                         all_dts.append(res)
                         all_gts.append(gts)
+
+                    # print("cp9")
+                    # print_cpu_ram_usage()
+                    # print_gpu_ram_usage()
+                    # MemoryUsageReocrds.cpu_memory.append(print_cpu_ram_usage())
+                    # MemoryUsageReocrds.gpu_memory.append(print_gpu_ram_usage())
 
                     evaluators[k].update(res)
                 else:
                     evaluators[k].update(outputs[k]["outputs"], [t[k] for t in targets])
 
             # raise StopIteration()
+        # print("ck10")
+        # print_cpu_ram_usage()
+        # print_gpu_ram_usage()
+        # MemoryUsageReocrds.cpu_memory.append(print_cpu_ram_usage())
+        # MemoryUsageReocrds.gpu_memory.append(print_gpu_ram_usage())
 
     # tasks to perform evaluation (fixation-generation, negbio-classification, chexpert-classification)
     # segmentation can be used with IoU
@@ -360,12 +440,28 @@ def train_one_epoch(
     # union = np.logical_or(target, prediction)
     # iou_score = np.sum(intersection) / np.sum(union)
     # or accuracy
+    
+
+    # raise StopIteration()
+    # print("ck11")
+    # print_cpu_ram_usage()
+    # print_gpu_ram_usage()
+    # MemoryUsageReocrds.cpu_memory.append(print_cpu_ram_usage())
+    # MemoryUsageReocrds.gpu_memory.append(print_gpu_ram_usage())
+
     if "lesion-detection" in evaluators and return_dt_gt:
         evaluators["lesion-detection"].all_dts = all_dts
         evaluators["lesion-detection"].all_gts = all_gts
 
     metric_logger.synchronize_between_processes()
     print("Averaged stats:", metric_logger)
+
+    # raise StopIteration()
+    # print("ck12")
+    # print_cpu_ram_usage()
+    # print_gpu_ram_usage()
+    # MemoryUsageReocrds.cpu_memory.append(print_cpu_ram_usage())
+    # MemoryUsageReocrds.gpu_memory.append(print_gpu_ram_usage())
 
     if evaluate_on_run:
         for k, e in evaluators.items():
@@ -374,7 +470,22 @@ def train_one_epoch(
                 e.accumulate()
                 e.summarize()
 
+        # print("ck13")
+        # print_cpu_ram_usage()
+        # print_gpu_ram_usage()
+        # MemoryUsageReocrds.cpu_memory.append(print_cpu_ram_usage())
+        # MemoryUsageReocrds.gpu_memory.append(print_gpu_ram_usage())
+        # raise StopIteration()
+
         return evaluators, metric_logger
+    
+    # print("ck13")
+    # print_cpu_ram_usage()
+    # print_gpu_ram_usage()
+    # MemoryUsageReocrds.cpu_memory.append(print_cpu_ram_usage())
+    # MemoryUsageReocrds.gpu_memory.append(print_gpu_ram_usage())
+
+    # raise StopIteration()
 
     return metric_logger
 

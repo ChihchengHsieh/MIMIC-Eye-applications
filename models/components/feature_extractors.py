@@ -25,13 +25,33 @@ class SpatialisationBlock(nn.Module):
         if upsample == "deconv":
             self.deconv = Deconv2dBNReLu(in_channels, out_channels)
             self.convs = nn.Sequential(
-                Conv2dBNReLu(out_channels, out_channels, kernel_size=3, padding=1,),
-                Conv2dBNReLu(out_channels, out_channels, kernel_size=3, padding=1,),
+                Conv2dBNReLu(
+                    out_channels,
+                    out_channels,
+                    kernel_size=3,
+                    padding=1,
+                ),
+                Conv2dBNReLu(
+                    out_channels,
+                    out_channels,
+                    kernel_size=3,
+                    padding=1,
+                ),
             )
         elif upsample == "interpolate":
             self.convs = nn.Sequential(
-                Conv2dBNReLu(in_channels, out_channels, kernel_size=3, padding=1,),
-                Conv2dBNReLu(out_channels, out_channels, kernel_size=3, padding=1,),
+                Conv2dBNReLu(
+                    in_channels,
+                    out_channels,
+                    kernel_size=3,
+                    padding=1,
+                ),
+                Conv2dBNReLu(
+                    out_channels,
+                    out_channels,
+                    kernel_size=3,
+                    padding=1,
+                ),
             )
         else:
             raise ValueError(f"Not supported upsample method: {upsample}")
@@ -66,8 +86,12 @@ class ImageFeatureExtractor(GeneralFeatureExtractor):
         self.source_name = source_name
         self.backbone = backbone
         self.fix_backbone = fix_backbone
+
     def forward(self, x):
-        x = torch.stack([x_i[self.source_name]["images"] for x_i in x], dim=0,)
+        x = torch.stack(
+            [x_i[self.source_name]["images"] for x_i in x],
+            dim=0,
+        )
 
         if self.fix_backbone:
             if len(self.backbone) == 2:
@@ -75,18 +99,18 @@ class ImageFeatureExtractor(GeneralFeatureExtractor):
                 return self.backbone[1](x)
             else:
                 raise NotImplementedError("Not supported weights fixing method.")
-        return self.backbone(x)
-    
+        return {"output_f": self.backbone(x)}
+
     def fix_backbone_weights(self, x):
-        self.fix_backbone= x
+        self.fix_backbone = x
         print(f"backbone weights fix status: {self.fix_backbone}")
 
 
 class TabularFeatureExtractor(GeneralFeatureExtractor):
     """
-        categorical_col_maps:{
-            category_name: number of category
-        }
+    categorical_col_maps:{
+        category_name: number of category
+    }
     """
 
     def __init__(
@@ -117,18 +141,20 @@ class TabularFeatureExtractor(GeneralFeatureExtractor):
         self.categorical_col_maps = categorical_col_maps
         self.embedding_dim = embedding_dim
 
-        deconv_in_channels = (len(all_cols) - len(categorical_col_maps)) + (
+        self.deconv_in_channels = (len(all_cols) - len(categorical_col_maps)) + (
             len(categorical_col_maps) * embedding_dim
         )
 
-        expand_times = np.log2(out_dim)
+        self.out_dim = out_dim
+
+        self.expand_times = np.log2(out_dim)
 
         self.spatialisations = nn.Sequential(
             *(
-                [SpatialisationBlock(deconv_in_channels, conv_channels, upsample)]
+                [SpatialisationBlock(self.deconv_in_channels, conv_channels, upsample)]
                 + [
                     SpatialisationBlock(conv_channels, conv_channels, upsample)
-                    for _ in range(int(expand_times) - 2)
+                    for _ in range(int(self.expand_times) - 2)
                 ]
                 + [SpatialisationBlock(conv_channels, out_channels, upsample)]
             )
@@ -166,7 +192,7 @@ class TabularFeatureExtractor(GeneralFeatureExtractor):
 
         output = self.spatialisations(tabular_input[:, :, None, None])
 
-        return output
+        return {"output_f": output, "tabular_input": tabular_input}
 
 
 class SequentialFeatureExtractor(GeneralFeatureExtractor):
@@ -176,4 +202,3 @@ class SequentialFeatureExtractor(GeneralFeatureExtractor):
         if encoder_type == "transformer":
             encoder_layer = nn.TransformerEncoderLayer(d_model=512, nhead=8)
             transformer_encoder = nn.TransformerEncoder(encoder_layer, num_layers=6)
-

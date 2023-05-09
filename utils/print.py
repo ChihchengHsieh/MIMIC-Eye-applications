@@ -1,3 +1,4 @@
+import psutil, torch
 from sys import stdout
 
 def print_peforming_task(task: str):
@@ -39,3 +40,18 @@ def is_notebook() -> bool:
             return False  # Other type (?)
     except NameError:
         return False  # Probably standard Python interpreter
+
+
+def print_cpu_ram_usage():
+    # Getting % usage of virtual_memory ( 3rd field)
+    print('RAM memory % used:', psutil.virtual_memory()[2])
+    # Getting usage of virtual_memory in GB ( 4th field)
+    usage_in_gb = psutil.virtual_memory()[3]/1000000000
+    print('RAM Used (GB):', usage_in_gb)
+    return usage_in_gb
+
+
+def print_gpu_ram_usage():
+    gpu_memory_in_gb = torch.cuda.memory_allocated(0)/1024/1024/1024
+    print(f"GPU RAM used: {gpu_memory_in_gb} GB.")
+    return gpu_memory_in_gb

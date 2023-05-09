@@ -741,7 +741,7 @@ def get_eval_params_dict(
     max_dets = max_dets if not max_dets is None else [1, 10]
 
     eval_params_dict = {
-        iou_type: Params(iouType=iou_type) for iou_type in ["bbox"]  # , "segm"]
+        iou_type: Params(iouType=iou_type) for iou_type in ["bbox", "segm"]
     }
 
     # eval_params_dict["bbox"].iouThrs = iou_thrs
@@ -749,8 +749,7 @@ def get_eval_params_dict(
 
     # eval_params_dict["bbox"].maxDets = [1, 10]
     # eval_params_dict["bbox"].maxDets = maxDets
-    # eval_params_dict["segm"].maxDets = [1, 10]
-
+    eval_params_dict["segm"].maxDets = maxDets
     eval_params_dict["bbox"].maxDets = maxDets
 
     # eval_params_dict["bbox"].areaRngLbl = areaRngLbl
@@ -766,7 +765,7 @@ def get_eval_params_dict(
             eval_params_dict[k].catIds = sorted(coco_gt.getCatIds())
 
     eval_params_dict["bbox"].useIoBB = use_iobb
-    # eval_params_dict["segm"].useIoBB = False
+    eval_params_dict["segm"].useIoBB = use_iobb
 
     return eval_params_dict
 

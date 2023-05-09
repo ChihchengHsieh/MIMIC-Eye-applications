@@ -2,8 +2,13 @@ from ast import Dict
 from dataclasses import dataclass, field
 from typing import List, Union
 import numpy as np
+from data.constants import (
+    DEFAULT_MIMIC_CLINICAL_CAT_COLS,
+    DEFAULT_MIMIC_CLINICAL_NUM_COLS,
+)
 
-from data.strs import TaskStrs
+from data.strs import TaskStrs, SourceStrs
+
 
 @dataclass
 class ModelSetup:
@@ -11,10 +16,10 @@ class ModelSetup:
     # which mode of dataset is used during training.
     # [normal] - the images with same dicom_id will be seen as different instances.
     # [unified] - the images with same dicom_id will be seen as only one instance.
-    
+
     get_performance_iou: float = None
-    get_performance_areaRng: Union[str,list] ="all"
-    get_performance_maxDets = 30 
+    get_performance_areaRng: Union[str, list] = "all"
+    get_performance_maxDets = 30
 
     # name of the model.
     name: str = None
@@ -132,7 +137,7 @@ class ModelSetup:
 
     # the fpn is only implemented for ResNet and SwinTranformer.
     using_fpn: bool = False
-    use_mask: bool = True
+    lesion_detection_use_mask: bool = True
 
     fuse_conv_channels: int = 32
 
@@ -226,6 +231,46 @@ class ModelSetup:
     performance_standard_metric: str = "ap"
     random_flip: bool = True
 
+    use_clinical_df:bool = False,
+
     use_dynamic_weight: bool = False
 
     with_clinical_label: bool = False
+
+    clinical_lesion_detection_use_1D_fusion: bool = False
+
+    including_clinical_num: List[str] = field(
+        default_factory=lambda: DEFAULT_MIMIC_CLINICAL_NUM_COLS
+    )
+    including_clinical_cat: List[str] = field(
+        default_factory=lambda: DEFAULT_MIMIC_CLINICAL_CAT_COLS
+    )
+
+    def has_categorical_clinical_features(
+        self,
+    ):
+        if not hasattr(self, "including_clinical_cat"):
+            return True
+
+        return (
+            not self.including_clinical_cat is None
+            and len(self.including_clinical_cat) > 0
+        )
+
+    def get_clinical_num_len(self):
+        return (
+            len(self.including_clinical_num)
+            if hasattr(self, "including_clinical_num")
+            else 9
+        )
+
+    def get_input_dim_for_spa(
+        self,
+    ):
+        if not SourceStrs.CLINICAL in self.sources:
+            return 0
+
+        if self.has_categorical_clinical_features():
+            return self.clinical_input_channels
+
+        return self.get_clinical_num_len()

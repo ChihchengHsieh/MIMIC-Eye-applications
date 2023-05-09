@@ -19,6 +19,7 @@ from torchvision.models.detection.roi_heads import (
 from torchvision.models.detection.rpn import concat_box_prediction_layers
 
 from data.strs import TaskStrs
+from models.setup import ModelSetup
 
 
 @torch.jit.unused
@@ -63,7 +64,10 @@ class XAMIAnchorGenerator(nn.Module):
     }
 
     def __init__(
-        self, image_size, sizes=((128, 256, 512),), aspect_ratios=((0.5, 1.0, 2.0),),
+        self,
+        image_size,
+        sizes=((128, 256, 512),),
+        aspect_ratios=((0.5, 1.0, 2.0),),
     ):
         super().__init__()
 
@@ -154,7 +158,10 @@ class XAMIAnchorGenerator(nn.Module):
 
         return anchors
 
-    def forward(self, feature_maps: List[Tensor],) -> List[Tensor]:
+    def forward(
+        self,
+        feature_maps: List[Tensor],
+    ) -> List[Tensor]:
         batch_size = len(feature_maps[0])
         grid_sizes = [feature_map.shape[-2:] for feature_map in feature_maps]
         image_size = [self.image_size, self.image_size]
@@ -316,6 +323,34 @@ class XAMIMatcher:
         matches[pred_inds_to_update] = all_matches[pred_inds_to_update]
 
 
+# class XAMITwoMLPHead(nn.Module):
+#     """
+#     Standard heads for FPN-based models
+
+#     Args:
+#         in_channels (int): number of input channels
+#         representation_size (int): size of the intermediate representation
+#     """
+
+#     def __init__(self, in_channels, representation_size, dropout_rate=0):
+#         super().__init__()
+
+#         self.fc6 = nn.Sequential(
+#             nn.Linear(in_channels, representation_size,),
+#             nn.Dropout2d(p=dropout_rate, inplace=False),
+#         )
+#         self.fc7 = nn.Sequential(
+#             nn.Linear(representation_size, representation_size),
+#             nn.Dropout2d(p=dropout_rate, inplace=False),
+#         )
+
+#     def forward(self, x):
+#         x = x.flatten(start_dim=1)
+#         x = F.relu(self.fc6(x))
+#         x = F.relu(self.fc7(x))
+#         return x
+
+
 class XAMITwoMLPHead(nn.Module):
     """
     Standard heads for FPN-based models
@@ -325,11 +360,16 @@ class XAMITwoMLPHead(nn.Module):
         representation_size (int): size of the intermediate representation
     """
 
-    def __init__(self, in_channels, representation_size, dropout_rate=0):
+    def __init__(self, use_1D_fusion, in_channels, representation_size, dropout_rate=0):
         super().__init__()
 
+        self.use_1D_fusion = use_1D_fusion
+
         self.fc6 = nn.Sequential(
-            nn.Linear(in_channels, representation_size,),
+            nn.Linear(
+                in_channels,
+                representation_size,
+            ),
             nn.Dropout2d(p=dropout_rate, inplace=False),
         )
         self.fc7 = nn.Sequential(
@@ -337,10 +377,20 @@ class XAMITwoMLPHead(nn.Module):
             nn.Dropout2d(p=dropout_rate, inplace=False),
         )
 
-    def forward(self, x):
+    def forward(self, x, clinical_input=None):
+        self.x = x
         x = x.flatten(start_dim=1)
+
+        if self.use_1D_fusion:
+            assert (
+                not clinical_input is None
+            ), "You design the model to attach the clinical data in the box_pred; however, no clincal input is being provided."
+            self.clinical_input = clinical_input
+            x = torch.concat([x, clinical_input], axis=1)
+
         x = F.relu(self.fc6(x))
         x = F.relu(self.fc7(x))
+
         return x
 
 
@@ -402,7 +452,9 @@ class XAMIRegionProposalNetwork(torch.nn.Module):
         self.box_similarity = box_ops.box_iou
 
         self.proposal_matcher = XAMIMatcher(
-            fg_iou_thresh, bg_iou_thresh, allow_low_quality_matches=True,
+            fg_iou_thresh,
+            bg_iou_thresh,
+            allow_low_quality_matches=True,
         )
 
         self.fg_bg_sampler = det_utils.BalancedPositiveNegativeSampler(
@@ -492,7 +544,10 @@ class XAMIRegionProposalNetwork(torch.nn.Module):
         return torch.cat(r, dim=1)
 
     def filter_proposals(
-        self, proposals: Tensor, objectness: Tensor, num_anchors_per_level: List[int],
+        self,
+        proposals: Tensor,
+        objectness: Tensor,
+        num_anchors_per_level: List[int],
     ) -> Tuple[List[Tensor], List[Tensor]]:
 
         num_images = proposals.shape[0]
@@ -638,7 +693,9 @@ class XAMIRegionProposalNetwork(torch.nn.Module):
         self.objectness = objectness
         self.num_anchors_per_level = num_anchors_per_level
         boxes, scores = self.filter_proposals(
-            proposals, objectness, num_anchors_per_level,
+            proposals,
+            objectness,
+            num_anchors_per_level,
         )
 
         losses = {}
@@ -708,7 +765,7 @@ class XAMIRoIHeads(nn.Module):
         self.box_coder = det_utils.BoxCoder(bbox_reg_weights)
 
         self.box_roi_pool = box_roi_pool
-        self.box_head = box_head
+        self.box_head: XAMITwoMLPHead = box_head
         self.box_predictor = box_predictor
         self.use_gt_in_train = use_gt_in_train
 
@@ -942,6 +999,7 @@ class XAMIRoIHeads(nn.Module):
         proposals,  # type: List[Tensor]
         image_shapes,  # type: List[Tuple[int, int]]
         targets=None,  # type: Optional[List[Dict[str, Tensor]]]
+        tabular_input =None,
     ):
         # type: (...) -> Tuple[List[Dict[str, Tensor]], Dict[str, Tensor]]
         """
@@ -978,7 +1036,30 @@ class XAMIRoIHeads(nn.Module):
 
         box_features = self.box_roi_pool(features, proposals, image_shapes)
 
-        box_features = self.box_head(box_features)
+
+        '''
+        Perform 1-D fusion here.
+        '''
+        if self.box_head.use_1D_fusion:
+            # you will expect to receive the clinical_input
+            assert (
+                not tabular_input is None
+            ), "You design the model to attach the clinical data in the roi_head; however, no clincal input is being provided."
+            proposals_tabular_input = torch.concat(
+                [
+                    tabular_input[i].repeat(p.shape[0], 1)
+                    for i, p in enumerate(proposals)
+                ],
+                axis=0,
+            )
+            box_features = self.box_head(box_features, proposals_tabular_input)
+        else:
+            box_features = self.box_head(box_features)
+
+
+
+        # box_features = self.box_head(box_features)
+
 
         class_logits, box_regression = self.box_predictor(box_features)
         self.pred_out_logits, self.pred_out_reg = class_logits, box_regression
@@ -1047,8 +1128,10 @@ class XAMIRoIHeads(nn.Module):
                 assert pos_matched_idxs is not None
                 assert mask_logits is not None
 
-                gt_masks = [t["masks"] for t in targets]
-                gt_labels = [t["labels"] for t in targets]
+                # print(list(targets[0].keys()))
+
+                gt_masks = [t[TaskStrs.LESION_DETECTION]["masks"] for t in targets]
+                gt_labels = [t[TaskStrs.LESION_DETECTION]["labels"] for t in targets]
                 rcnn_loss_mask = maskrcnn_loss(
                     mask_logits, mask_proposals, gt_masks, gt_labels, pos_matched_idxs
                 )
@@ -1076,6 +1159,7 @@ def _fake_cast_onnx(v: Tensor) -> float:
     # ONNX requires a tensor but here we fake its type for JIT.
     return v
 
+
 def _resize_image_and_heatmaps(
     image: Tensor,
     heatmap_task_name: str,
@@ -1085,7 +1169,10 @@ def _resize_image_and_heatmaps(
     size = [fixed_size[1], fixed_size[0]]
 
     image = torch.nn.functional.interpolate(
-        image[None], size=size, mode="bilinear", align_corners=False,
+        image[None],
+        size=size,
+        mode="bilinear",
+        align_corners=False,
     )[0]
 
     if target_index is None:
@@ -1095,11 +1182,12 @@ def _resize_image_and_heatmaps(
         fixations = target_index[heatmap_task_name]["heatmaps"]
 
         fixations = torch.nn.functional.interpolate(
-            fixations[:, None].float(), size=size,
+            fixations[:, None].float(),
+            size=size,
         )[:, 0]
 
         if not fixations.max() == 0:
-            fixations = fixations/(fixations.max())# sigmoid
+            fixations = fixations / (fixations.max())  # sigmoid
         # if not fixations.sum() == 0:
         #     fixations = fixations/fixations.sum() # softmax
 
@@ -1116,7 +1204,10 @@ def _resize_image(
     size = [fixed_size[1], fixed_size[0]]
 
     image = torch.nn.functional.interpolate(
-        image[None], size=size, mode="bilinear", align_corners=False,
+        image[None],
+        size=size,
+        mode="bilinear",
+        align_corners=False,
     )[0]
 
     return image, target_index
@@ -1199,7 +1290,10 @@ class EyeObjectDetectionRCNNTransform(nn.Module):
                 )
             image = self.normalize(image)
 
-            (image, target_index,) = self.resize(image, target_index)
+            (
+                image,
+                target_index,
+            ) = self.resize(image, target_index)
 
             images[i] = image
 
@@ -1207,7 +1301,7 @@ class EyeObjectDetectionRCNNTransform(nn.Module):
                 targets[i] = target_index
 
         batched_images = self.batch_images(images, size_divisible=self.size_divisible)
-    
+
         return batched_images, targets
 
     def normalize(self, image: Tensor) -> Tensor:
@@ -1231,7 +1325,9 @@ class EyeObjectDetectionRCNNTransform(nn.Module):
         return k[index]
 
     def resize(
-        self, image: Tensor, target_index: Optional[Dict[str, Tensor]] = None,
+        self,
+        image: Tensor,
+        target_index: Optional[Dict[str, Tensor]] = None,
     ) -> Tuple[Tensor, Optional[Dict[str, Tensor]]]:
         h, w = image.shape[-2:]
 
@@ -1404,7 +1500,10 @@ class EyeHeatmapGenerationRCNNTransform(nn.Module):
                 )
             image = self.normalize(image)
 
-            (image, target_index,) = self.resize(image, target_index)
+            (
+                image,
+                target_index,
+            ) = self.resize(image, target_index)
 
             images[i] = image
 
@@ -1414,7 +1513,7 @@ class EyeHeatmapGenerationRCNNTransform(nn.Module):
         # this is the size after resized.
         # image_sizes = [img.shape[-2:] for img in images]
         batched_images = self.batch_images(images, size_divisible=self.size_divisible)
-      
+
         return batched_images, targets
 
     def normalize(self, image: Tensor) -> Tensor:
@@ -1438,7 +1537,9 @@ class EyeHeatmapGenerationRCNNTransform(nn.Module):
         return k[index]
 
     def resize(
-        self, image: Tensor, target_index: Optional[Dict[str, Tensor]] = None,
+        self,
+        image: Tensor,
+        target_index: Optional[Dict[str, Tensor]] = None,
     ) -> Tuple[Tensor, Optional[Dict[str, Tensor]]]:
 
         (image, target_index,) = _resize_image_and_heatmaps(
@@ -1545,6 +1646,7 @@ class EyeHeatmapGenerationRCNNTransform(nn.Module):
         format_string += "\n)"
         return format_string
 
+
 class EyeImageRCNNTransform(nn.Module):
 
     """
@@ -1602,7 +1704,10 @@ class EyeImageRCNNTransform(nn.Module):
                 )
             image = self.normalize(image)
 
-            (image, target_index,) = self.resize(image, target_index)
+            (
+                image,
+                target_index,
+            ) = self.resize(image, target_index)
 
             images[i] = image
 
@@ -1610,7 +1715,7 @@ class EyeImageRCNNTransform(nn.Module):
                 targets[i] = target_index
 
         batched_images = self.batch_images(images, size_divisible=self.size_divisible)
-    
+
         return batched_images, targets
 
     def normalize(self, image: Tensor) -> Tensor:
@@ -1634,7 +1739,9 @@ class EyeImageRCNNTransform(nn.Module):
         return k[index]
 
     def resize(
-        self, image: Tensor, target_index: Optional[Dict[str, Tensor]] = None,
+        self,
+        image: Tensor,
+        target_index: Optional[Dict[str, Tensor]] = None,
     ) -> Tuple[Tensor, Optional[Dict[str, Tensor]]]:
         h, w = image.shape[-2:]
 
@@ -1714,13 +1821,11 @@ class EyeImageRCNNTransform(nn.Module):
         return batched_imgs
 
 
-
-
 class CustomisedImageRCNNTransform(nn.Module):
 
     """
     # this should be the transformation done for (1) xrays (2) fixation heatmap (3) bounding boxes
-    # the informatoin about the original image can be passed into the function that shrink the size of the bounding boxes. 
+    # the informatoin about the original image can be passed into the function that shrink the size of the bounding boxes.
 
     Performs input / target transformation before feeding the data to a GeneralizedRCNN
     model.
@@ -1776,7 +1881,10 @@ class CustomisedImageRCNNTransform(nn.Module):
                 )
             image = self.normalize(image)
 
-            (image, target_index,) = self.resize(image, target_index)
+            (
+                image,
+                target_index,
+            ) = self.resize(image, target_index)
 
             images[i] = image
 
@@ -1784,7 +1892,7 @@ class CustomisedImageRCNNTransform(nn.Module):
                 targets[i] = target_index
 
         batched_images = self.batch_images(images, size_divisible=self.size_divisible)
-    
+
         return batched_images, targets
 
     def normalize(self, image: Tensor) -> Tensor:
@@ -1808,7 +1916,9 @@ class CustomisedImageRCNNTransform(nn.Module):
         return k[index]
 
     def resize(
-        self, image: Tensor, target_index: Optional[Dict[str, Tensor]] = None,
+        self,
+        image: Tensor,
+        target_index: Optional[Dict[str, Tensor]] = None,
     ) -> Tuple[Tensor, Optional[Dict[str, Tensor]]]:
         h, w = image.shape[-2:]
 

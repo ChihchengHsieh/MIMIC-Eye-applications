@@ -12,21 +12,23 @@ from .frameworks import *
 
 def create_model_from_setup(setup: ModelSetup):
     feature_extractors = nn.ModuleDict()
-
     feature_map_dim = None
 
     xrays_extractor_name = SourceStrs.XRAYS
     if xrays_extractor_name in setup.sources:
         backbone = get_normal_backbone(setup)
         xray_extractor = ImageFeatureExtractor(
-            source_name=xrays_extractor_name, backbone=backbone,
+            source_name=xrays_extractor_name,
+            backbone=backbone,
         )
         feature_extractors.update({xrays_extractor_name: xray_extractor})
         feature_map_dim = [backbone.out_channels, backbone.out_dim, backbone.out_dim]
+        
 
     clinical_extractor_name = SourceStrs.CLINICAL
+    clinical_extractor = None
     if clinical_extractor_name in setup.sources:
-        clnical_extractor = TabularFeatureExtractor(
+        clinical_extractor = TabularFeatureExtractor(
             source_name=clinical_extractor_name,
             all_cols=setup.clinical_cat + setup.clinical_num,
             categorical_col_maps=setup.categorical_col_maps,
@@ -36,13 +38,14 @@ def create_model_from_setup(setup: ModelSetup):
             out_channels=setup.backbone_out_channels,
             upsample=setup.clinical_upsample,
         )
-        feature_extractors.update({clinical_extractor_name: clnical_extractor})
+        feature_extractors.update({clinical_extractor_name: clinical_extractor})
 
     fixation_extractor_name = SourceStrs.FIXATIONS
     if fixation_extractor_name in setup.sources:
         backbone = get_normal_backbone(setup)
         fixations_extractor = ImageFeatureExtractor(
-            source_name=fixation_extractor_name, backbone=backbone,
+            source_name=fixation_extractor_name,
+            backbone=backbone,
         )
         feature_extractors.update({fixation_extractor_name: fixations_extractor})
         feature_map_dim = [backbone.out_channels, backbone.out_dim, backbone.out_dim]
@@ -63,7 +66,7 @@ def create_model_from_setup(setup: ModelSetup):
 
     task_performers = nn.ModuleDict()
 
-    ########## clinical predictors 
+    ########## clinical predictors
     age_regression_task_name = TaskStrs.AGE_REGRESSION
     if age_regression_task_name in setup.tasks:
         age_regression_params = RegressionParameters(
@@ -79,8 +82,12 @@ def create_model_from_setup(setup: ModelSetup):
             task_name=temperature_regression_task_name,
             input_channel=fusor.out_channel,
         )
-        temperature_regression_clf = RegressionPerformer(params=temperature_regression_params)
-        task_performers.update({temperature_regression_task_name: temperature_regression_clf})
+        temperature_regression_clf = RegressionPerformer(
+            params=temperature_regression_params
+        )
+        task_performers.update(
+            {temperature_regression_task_name: temperature_regression_clf}
+        )
 
     heartrate_regression_task_name = TaskStrs.HEARTRATE_REGRESSION
     if heartrate_regression_task_name in setup.tasks:
@@ -88,8 +95,12 @@ def create_model_from_setup(setup: ModelSetup):
             task_name=heartrate_regression_task_name,
             input_channel=fusor.out_channel,
         )
-        heartrate_regression_clf = RegressionPerformer(params=heartrate_regression_params)
-        task_performers.update({heartrate_regression_task_name: heartrate_regression_clf})
+        heartrate_regression_clf = RegressionPerformer(
+            params=heartrate_regression_params
+        )
+        task_performers.update(
+            {heartrate_regression_task_name: heartrate_regression_clf}
+        )
 
     resprate_regression_task_name = TaskStrs.RESPRATE_REGRESSION
     if resprate_regression_task_name in setup.tasks:
@@ -135,7 +146,7 @@ def create_model_from_setup(setup: ModelSetup):
         )
         acuity_regression_clf = RegressionPerformer(params=acuity_regression_params)
         task_performers.update({acuity_regression_task_name: acuity_regression_clf})
-    
+
     gender_classification_task_name = TaskStrs.GENDER_CLASSIFICATION
     if gender_classification_task_name in setup.tasks:
         gender_clf_params = MultiBinaryClassificationParameters(
@@ -143,7 +154,9 @@ def create_model_from_setup(setup: ModelSetup):
             input_channel=fusor.out_channel,
             num_classes=1,
         )
-        gender_clf = MultiBinaryClassificationPerformer(params=gender_clf_params,)
+        gender_clf = MultiBinaryClassificationPerformer(
+            params=gender_clf_params,
+        )
         task_performers.update({gender_classification_task_name: gender_clf})
 
     # make the dataset, and add the tasks in model setup.
@@ -152,9 +165,13 @@ def create_model_from_setup(setup: ModelSetup):
     if lesion_detection_task_name in setup.tasks:
         lesion_params = ObjectDetectionParameters(
             task_name=lesion_detection_task_name,
-            out_channels=xray_extractor.backbone.out_channels,
+            backbone_out_channels=xray_extractor.backbone.out_channels,
             num_classes=len(setup.lesion_label_cols) + 1,
             image_size=setup.image_size,
+            use_1D_fusion=setup.clinical_lesion_detection_use_1D_fusion,
+            fusion_1D_source=SourceStrs.CLINICAL,
+            use_mask=setup.lesion_detection_use_mask,
+            clinical_ch=  None if clinical_extractor is None else clinical_extractor.deconv_in_channels,
         )
         lesion_performer = ObjectDetectionPerformer(lesion_params)
         task_performers.update({lesion_params.task_name: lesion_performer})
@@ -165,9 +182,11 @@ def create_model_from_setup(setup: ModelSetup):
             task_name=fixation_generation_task_name,
             input_channel=backbone.out_channels,
             decoder_channels=setup.decoder_channels,
-            image_size= setup.image_size,
+            image_size=setup.image_size,
         )  # the output should be just one channel.
-        fix_performer = HeatmapGenerationPerformer(params=fix_params,)
+        fix_performer = HeatmapGenerationPerformer(
+            params=fix_params,
+        )
         task_performers.update({fix_params.task_name: fix_performer})
 
     chexpert_classification_task_name = TaskStrs.CHEXPERT_CLASSIFICATION
@@ -177,7 +196,9 @@ def create_model_from_setup(setup: ModelSetup):
             input_channel=fusor.out_channel,
             num_classes=len(setup.chexpert_label_cols),
         )
-        chexpert_clf = MultiBinaryClassificationPerformer(params=chexpert_clf_params,)
+        chexpert_clf = MultiBinaryClassificationPerformer(
+            params=chexpert_clf_params,
+        )
         task_performers.update({chexpert_classification_task_name: chexpert_clf})
 
     negbio_classification_task_name = TaskStrs.NEGBIO_CLASSIFICATION
@@ -187,7 +208,9 @@ def create_model_from_setup(setup: ModelSetup):
             input_channel=fusor.out_channel,
             num_classes=len(setup.negbio_label_cols),
         )
-        negbio_clf = MultiBinaryClassificationPerformer(params=negbio_clf_params,)
+        negbio_clf = MultiBinaryClassificationPerformer(
+            params=negbio_clf_params,
+        )
         task_performers.update({negbio_classification_task_name: negbio_clf})
 
     model = ExtractFusePerform(
@@ -198,4 +221,3 @@ def create_model_from_setup(setup: ModelSetup):
     )
 
     return model
-
