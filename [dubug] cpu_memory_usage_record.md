@@ -16,4 +16,10 @@ train info size:
 
 baseline:
 
+The size of the res is 232 bytes
+The size of the gts is 88 bytes
+
+
 clinical:
+
+

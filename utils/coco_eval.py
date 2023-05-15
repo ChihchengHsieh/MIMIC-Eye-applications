@@ -601,6 +601,8 @@ class COCOeval:
                 eval_dicts.append(_summarize(1, maxDets=max_det))
 
             eval_dicts.append(_summarize(1, iouThr=0.5, maxDets=self.params.maxDets[2]))
+            eval_dicts.append(_summarize(1, iouThr=0.5, maxDets=self.params.maxDets[-1]))
+
             eval_dicts.append(
                 _summarize(1, iouThr=0.75, maxDets=self.params.maxDets[2])
             )
@@ -617,6 +619,9 @@ class COCOeval:
 
             for max_det in self.params.maxDets:
                 eval_dicts.append(_summarize(0, maxDets=max_det))
+                
+            eval_dicts.append(_summarize(0, iouThr=0.5, maxDets=self.params.maxDets[2]))
+            eval_dicts.append(_summarize(0, iouThr=0.5, maxDets=self.params.maxDets[-1]))
 
             eval_dicts.append(
                 _summarize(0, areaRng="small", maxDets=self.params.maxDets[2])

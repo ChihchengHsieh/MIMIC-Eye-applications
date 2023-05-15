@@ -86,6 +86,7 @@ class ImageFeatureExtractor(GeneralFeatureExtractor):
         self.source_name = source_name
         self.backbone = backbone
         self.fix_backbone = fix_backbone
+        self.still_have_this = "Yes"
 
     def forward(self, x):
         x = torch.stack(
@@ -96,7 +97,7 @@ class ImageFeatureExtractor(GeneralFeatureExtractor):
         if self.fix_backbone:
             if len(self.backbone) == 2:
                 x = self.backbone[0](x).detach()
-                return self.backbone[1](x)
+                return {"output_f": self.backbone[1](x)}
             else:
                 raise NotImplementedError("Not supported weights fixing method.")
         return {"output_f": self.backbone(x)}
@@ -104,6 +105,91 @@ class ImageFeatureExtractor(GeneralFeatureExtractor):
     def fix_backbone_weights(self, x):
         self.fix_backbone = x
         print(f"backbone weights fix status: {self.fix_backbone}")
+
+
+class TabularFeatureExpander(GeneralFeatureExtractor):
+    def __init__(
+        self,
+        source_name: str,
+        all_cols: list,
+        categorical_col_maps: Dict,
+        embedding_dim: int,
+        out_dim: int,
+        out_channels,
+    ) -> None:
+
+        """
+        This model don't use the deconv, but just repeat the value.
+        """
+        super().__init__("extractor-tabular-expander")
+        self.source_name = source_name
+        self.has_cat = len(categorical_col_maps) > 0
+        self.has_num = len(all_cols) - len(categorical_col_maps) > 0
+
+        if self.has_cat:
+            self.embs = nn.ModuleDict(
+                {
+                    k: nn.Embedding(v, embedding_dim)
+                    for k, v in categorical_col_maps.items()
+                }
+            )
+
+        self.all_cols = all_cols
+        self.categorical_col_maps = categorical_col_maps
+        self.embedding_dim = embedding_dim
+
+        self.deconv_in_channels = (len(all_cols) - len(categorical_col_maps)) + (
+            len(categorical_col_maps) * embedding_dim
+        )
+
+        self.out_dim = out_dim
+
+        self.model = nn.Sequential(
+            *[
+                nn.Linear(self.deconv_in_channels, out_channels),
+                nn.LayerNorm(out_channels),
+                nn.GELU(),
+            ],
+        )
+
+    def forward(
+        self,
+        x,
+    ):
+        """
+        {
+            'cat' : categorical tabular data,
+            'num' : numerical tabular data,
+        }
+        """
+
+        # raise StopIteration("Tabular Expander is in used.")
+
+        cat_data = [x_i[self.source_name]["cat"] for x_i in x]
+        num_data = [x_i[self.source_name]["num"] for x_i in x]
+
+        cat_data = chain_map(cat_data)
+        cat_data = {k: torch.stack(v, dim=0) for k, v in cat_data.items()}
+        num_data = torch.stack(num_data)
+        # x = x[self.source_name]
+
+        if self.has_cat:
+            emb_out = OrderedDict({k: self.embs[k](v) for k, v in cat_data.items()})
+            emb_out_cat = torch.concat(list(emb_out.values()), axis=1)
+
+            if self.has_num:
+                tabular_input = torch.concat([num_data, emb_out_cat], dim=1)
+            else:
+                tabular_input = emb_out_cat
+
+        else:
+            tabular_input = num_data
+
+        output = self.model(tabular_input)[:, :, None, None].repeat(
+            1, 1, int(self.out_dim), int(self.out_dim)
+        )
+
+        return {"output_f": output, "tabular_input": tabular_input}
 
 
 class TabularFeatureExtractor(GeneralFeatureExtractor):
@@ -167,8 +253,6 @@ class TabularFeatureExtractor(GeneralFeatureExtractor):
             'num' : numerical tabular data,
         }
         """
-
-        list[dict[str, torch.Tensor]]
 
         cat_data = [x_i[self.source_name]["cat"] for x_i in x]
         num_data = [x_i[self.source_name]["num"] for x_i in x]

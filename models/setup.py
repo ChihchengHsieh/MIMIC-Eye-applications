@@ -246,6 +246,10 @@ class ModelSetup:
         default_factory=lambda: DEFAULT_MIMIC_CLINICAL_CAT_COLS
     )
 
+    clinical_use_expander: bool = False
+
+    objectness_pos_weight: float = 1
+
     def has_categorical_clinical_features(
         self,
     ):
@@ -274,3 +278,6 @@ class ModelSetup:
             return self.clinical_input_channels
 
         return self.get_clinical_num_len()
+    
+
+    

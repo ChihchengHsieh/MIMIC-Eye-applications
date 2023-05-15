@@ -440,6 +440,7 @@ class XAMIRegionProposalNetwork(torch.nn.Module):
         post_nms_top_n: Dict[str, int],
         nms_thresh: float,
         score_thresh: float = 0.0,
+        objectness_pos_weight: float = 1,
     ) -> None:
         super().__init__()
         self.anchor_generator = anchor_generator
@@ -465,6 +466,7 @@ class XAMIRegionProposalNetwork(torch.nn.Module):
         self._post_nms_top_n = post_nms_top_n
         self.nms_thresh = nms_thresh
         self.score_thresh = score_thresh
+        self.objectness_pos_weight = objectness_pos_weight
         self.min_size = 1e-3
 
     def pre_nms_top_n(self) -> int:
@@ -640,7 +642,7 @@ class XAMIRegionProposalNetwork(torch.nn.Module):
         ) / (sampled_inds.numel())
 
         objectness_loss = F.binary_cross_entropy_with_logits(
-            objectness[sampled_inds], labels[sampled_inds]
+            objectness[sampled_inds], labels[sampled_inds], pos_weight=torch.tensor(self.objectness_pos_weight),
         )
 
         return objectness_loss, box_loss
@@ -692,6 +694,7 @@ class XAMIRegionProposalNetwork(torch.nn.Module):
         self.proposals = proposals
         self.objectness = objectness
         self.num_anchors_per_level = num_anchors_per_level
+
         boxes, scores = self.filter_proposals(
             proposals,
             objectness,
@@ -1036,7 +1039,6 @@ class XAMIRoIHeads(nn.Module):
 
         box_features = self.box_roi_pool(features, proposals, image_shapes)
 
-
         '''
         Perform 1-D fusion here.
         '''
@@ -1056,10 +1058,7 @@ class XAMIRoIHeads(nn.Module):
         else:
             box_features = self.box_head(box_features)
 
-
-
         # box_features = self.box_head(box_features)
-
 
         class_logits, box_regression = self.box_predictor(box_features)
         self.pred_out_logits, self.pred_out_reg = class_logits, box_regression

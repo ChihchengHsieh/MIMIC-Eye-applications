@@ -58,6 +58,7 @@ class ObjectDetectionParameters(object):
         use_1D_fusion,
         fusion_1D_source,
         use_mask,
+        objectness_pos_weight,
         clinical_ch=None,
     ) -> None:
 
@@ -114,6 +115,7 @@ class ObjectDetectionParameters(object):
         self.fusion_1D_source = fusion_1D_source
         self.clinical_ch = clinical_ch
         self.use_mask:bool = use_mask
+        self.objectness_pos_weight = objectness_pos_weight
 
 class ObjectDetectionPerformer(GeneralTaskPerformer):
     def __init__(

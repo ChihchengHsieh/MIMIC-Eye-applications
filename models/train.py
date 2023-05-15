@@ -11,10 +11,14 @@ class TrainingTimer(object):
         self.last_epoch = None
         self.epoch_start_t = None
 
-    def start_training(self,):
+    def start_training(
+        self,
+    ):
         self.start_t = datetime.now()
 
-    def start_epoch(self,):
+    def start_epoch(
+        self,
+    ):
         self.epoch_start_t = datetime.now()
 
     def end_epoch(self, epoch):
@@ -28,13 +32,19 @@ class TrainingTimer(object):
 
         return epoch_took, sec_already_took, speed
 
-    def end_training(self,):
+    def end_training(
+        self,
+    ):
         self.end_t = datetime.now()
 
-    def has_took_sec_from_init(self,):
+    def has_took_sec_from_init(
+        self,
+    ):
         return (datetime.now() - self.init_t).seconds
 
-    def has_took_sec(self,):
+    def has_took_sec(
+        self,
+    ):
         return (datetime.now() - self.start_t).seconds
 
 
@@ -78,3 +88,24 @@ class TrainingInfo:
             + section_divider
         )
 
+    def remove_dts_gts(
+        self,
+    ):
+        # this function remove gts and dts used for evaluation, or it will take a huge amount of space.
+        # those gts and dts are attached to lesion-detection evaluators.
+        for e in [
+            self.last_train_evaluator,
+            self.last_val_evaluator,
+            self.test_evaluator,
+        ]:
+            if "lesion-detection" in e:
+                del e.all_dts
+                del e.all_gts
+
+    # or we just simply set all the evaluator to None.
+    def remove_evaluators(
+        self,
+    ):
+        self.last_train_evaluator = None
+        self.last_val_evaluator = None
+        self.test_evaluator = None

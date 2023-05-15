@@ -115,6 +115,8 @@ def save_checkpoint(
 
     os.makedirs("training_records", exist_ok=True)
     # saving the train_info.
+    # remove evaluators to save disk space.
+    train_info.remove_evaluators()
     with open(
         os.path.join("training_records", f"{train_info.final_model_path }.pkl"),
         "wb",

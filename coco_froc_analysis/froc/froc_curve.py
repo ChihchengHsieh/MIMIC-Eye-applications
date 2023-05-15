@@ -215,6 +215,9 @@ def calc_scores(stats, lls_accuracy, nlls_per_image):
 #     else:
 #         return lls_accuracy, nlls_per_image
 
+class TempRecord:
+    pass
+
 
 def generate_froc_curve(
     gt,
@@ -228,6 +231,11 @@ def generate_froc_curve(
 ):
     lls_accuracy = {}
     nlls_per_image = {}
+
+    TempRecord.gt = gt
+    TempRecord.pr = pr
+    TempRecord.use_iou = use_iou
+    TempRecord.iou_thres = iou_thres
 
     for score_thres in np.linspace(0.0, 1.0, n_sample_points, endpoint=False):
         stats = froc_point(gt, pr, score_thres, use_iou, iou_thres)

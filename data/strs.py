@@ -25,3 +25,5 @@ class FusionStrs:
     HADAMARD_PRODUCT = "hadamard product"
     NO_ACTION = "no-action"
     CONCAT = "concat"
+    CONCAT_WITH_TOKENMIXER = "concat_with_token_mixer"
+    CONCAT_WITH_NORM_ACT_TOKENMIXER = "concat_with_norma_act_token_mixer"

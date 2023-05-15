@@ -41,6 +41,7 @@ class ElementwiseSumFusor(GeneralFusor):
         super().__init__("fusor-elementwise_sum", out_channel=out_channel)
 
     def forward(self, x):
+        self.x = x
         fusing_tensor, pass_through= get_fusing_tensor_and_pass_through(x)
         return {"z": sum(fusing_tensor), **pass_through}
 
@@ -51,9 +52,8 @@ class HadamardProductFusor(GeneralFusor):
 
     def forward(self, x):
         fusing_tensor, pass_through= get_fusing_tensor_and_pass_through(x)
-
-        output = torch.ones(fusing_tensor[0].shape)
-        for v in fusing_tensor():
+        output = torch.ones(fusing_tensor[0].shape).cuda()
+        for v in fusing_tensor:
             output *= v
 
         return {"z": output, **pass_through}
@@ -65,4 +65,32 @@ class ConcatenationFusor(GeneralFusor):
 
     def forward(self, x):
         fusing_tensor, pass_through= get_fusing_tensor_and_pass_through(x)
-        return {"z": self.model(torch.concat(fusing_tensor), axis=1), **pass_through}
+        return {"z": self.model(torch.concat(fusing_tensor, axis=1)), **pass_through}
+    
+class ConcatenationWithTokenMixer(GeneralFusor):
+    def __init__(self, in_channels, out_channel) -> None:
+        super().__init__("fusor_concatenation_with_token_mixer", out_channel)
+        self.model = nn.Conv2d(in_channels, out_channel, kernel_size=1, padding=0, stride=1)
+
+    def forward(self, x):
+        fusing_tensor, pass_through= get_fusing_tensor_and_pass_through(x)
+        return {"z": self.model(torch.concat(fusing_tensor, axis=1)), **pass_through}
+    
+
+class ConcatenationWithNormActivationTokenMixer(GeneralFusor):
+    def __init__(self, in_channels, out_channel, in_dim) -> None:
+        super().__init__("fusor_concatenation_with_token_mixer", out_channel)
+        self.model =nn.Sequential(
+            *[
+                nn.Conv2d(in_channels, out_channel, kernel_size=1, padding=0, stride=1),
+                nn.LayerNorm([int(out_channel), int(in_dim), int(in_dim)]),
+                nn.GELU(),
+            ]
+        )  
+
+    def forward(self, x):
+        fusing_tensor, pass_through= get_fusing_tensor_and_pass_through(x)
+        return {"z": self.model(torch.concat(fusing_tensor, axis=1)), **pass_through}
+    
+
+

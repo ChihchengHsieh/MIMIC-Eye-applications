@@ -23,21 +23,31 @@ def create_model_from_setup(setup: ModelSetup):
         )
         feature_extractors.update({xrays_extractor_name: xray_extractor})
         feature_map_dim = [backbone.out_channels, backbone.out_dim, backbone.out_dim]
-        
 
     clinical_extractor_name = SourceStrs.CLINICAL
     clinical_extractor = None
     if clinical_extractor_name in setup.sources:
-        clinical_extractor = TabularFeatureExtractor(
-            source_name=clinical_extractor_name,
-            all_cols=setup.clinical_cat + setup.clinical_num,
-            categorical_col_maps=setup.categorical_col_maps,
-            embedding_dim=setup.clinical_cat_emb_dim,
-            out_dim=feature_map_dim[-1],
-            conv_channels=setup.clinical_conv_channels,
-            out_channels=setup.backbone_out_channels,
-            upsample=setup.clinical_upsample,
-        )
+        if setup.clinical_use_expander:
+            clinical_extractor = TabularFeatureExpander(
+                source_name=clinical_extractor_name,
+                all_cols=setup.clinical_cat + setup.clinical_num,
+                categorical_col_maps=setup.categorical_col_maps,
+                embedding_dim=setup.clinical_cat_emb_dim,
+                out_dim=feature_map_dim[-1],
+                out_channels=setup.backbone_out_channels,
+            )
+        else:
+            clinical_extractor = TabularFeatureExtractor(
+                source_name=clinical_extractor_name,
+                all_cols=setup.clinical_cat + setup.clinical_num,
+                categorical_col_maps=setup.categorical_col_maps,
+                embedding_dim=setup.clinical_cat_emb_dim,
+                out_dim=feature_map_dim[-1],
+                conv_channels=setup.clinical_conv_channels,
+                out_channels=setup.backbone_out_channels,
+                upsample=setup.clinical_upsample,
+            )
+
         feature_extractors.update({clinical_extractor_name: clinical_extractor})
 
     fixation_extractor_name = SourceStrs.FIXATIONS
@@ -60,6 +70,17 @@ def create_model_from_setup(setup: ModelSetup):
         fusor = ConcatenationFusor(
             in_channels=setup.backbone_out_channels * len(feature_extractors),
             out_channel=setup.backbone_out_channels,
+        )
+    elif setup.fusor == FusionStrs.CONCAT_WITH_TOKENMIXER:
+        fusor = ConcatenationWithTokenMixer(
+            in_channels=setup.backbone_out_channels * len(feature_extractors),
+            out_channel=setup.backbone_out_channels,
+        )
+    elif setup.fusor == FusionStrs.CONCAT_WITH_NORM_ACT_TOKENMIXER:
+        fusor = ConcatenationWithNormActivationTokenMixer(
+            in_channels=setup.backbone_out_channels * len(feature_extractors),
+            out_channel=setup.backbone_out_channels,
+            in_dim=feature_map_dim[-1],
         )
     else:
         ValueError(f"Unsupported fusion method: [{setup.fusor}]")
@@ -171,7 +192,10 @@ def create_model_from_setup(setup: ModelSetup):
             use_1D_fusion=setup.clinical_lesion_detection_use_1D_fusion,
             fusion_1D_source=SourceStrs.CLINICAL,
             use_mask=setup.lesion_detection_use_mask,
-            clinical_ch=  None if clinical_extractor is None else clinical_extractor.deconv_in_channels,
+            clinical_ch=None
+            if clinical_extractor is None
+            else clinical_extractor.deconv_in_channels,
+            objectness_pos_weight=setup.objectness_pos_weight,
         )
         lesion_performer = ObjectDetectionPerformer(lesion_params)
         task_performers.update({lesion_params.task_name: lesion_performer})
