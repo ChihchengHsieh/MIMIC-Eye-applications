@@ -1,9 +1,10 @@
 from torch import nn
 import torch
 
-from models.components.general import Conv2dBNReLu
+from models.components.general import Conv2dBNGELU
 
-def get_fusing_tensor_and_pass_through(x: dict[dict: torch.Tensor]):
+
+def get_fusing_tensor_and_pass_through(x: dict[dict : torch.Tensor]):
     fusing_tensors = []
     pass_through = {}
     for k, v in x.items():
@@ -30,9 +31,9 @@ class NoActionFusor(GeneralFusor):
             out_channel=out_channel,
         )
 
-    def forward(self, x: dict[dict: torch.Tensor]):
+    def forward(self, x: dict[dict : torch.Tensor]):
         assert len(x.keys()) == 1, "should only have one element in no action fusor"
-        fusing_tensor, pass_through= get_fusing_tensor_and_pass_through(x)
+        fusing_tensor, pass_through = get_fusing_tensor_and_pass_through(x)
         return {"z": fusing_tensor[0], **pass_through}
 
 
@@ -42,7 +43,7 @@ class ElementwiseSumFusor(GeneralFusor):
 
     def forward(self, x):
         self.x = x
-        fusing_tensor, pass_through= get_fusing_tensor_and_pass_through(x)
+        fusing_tensor, pass_through = get_fusing_tensor_and_pass_through(x)
         return {"z": sum(fusing_tensor), **pass_through}
 
 
@@ -51,7 +52,7 @@ class HadamardProductFusor(GeneralFusor):
         super().__init__("fusor-hadamard_product", out_channel)
 
     def forward(self, x):
-        fusing_tensor, pass_through= get_fusing_tensor_and_pass_through(x)
+        fusing_tensor, pass_through = get_fusing_tensor_and_pass_through(x)
         output = torch.ones(fusing_tensor[0].shape).cuda()
         for v in fusing_tensor:
             output *= v
@@ -61,36 +62,43 @@ class HadamardProductFusor(GeneralFusor):
 class ConcatenationFusor(GeneralFusor):
     def __init__(self, in_channels, out_channel) -> None:
         super().__init__("fusor_concatenation", out_channel)
-        self.model = Conv2dBNReLu(in_channels, out_channel)
+        self.model = nn.Conv2d(in_channels, out_channel, kernel_size=3, padding=1)
 
     def forward(self, x):
-        fusing_tensor, pass_through= get_fusing_tensor_and_pass_through(x)
+        fusing_tensor, pass_through = get_fusing_tensor_and_pass_through(x)
         return {"z": self.model(torch.concat(fusing_tensor, axis=1)), **pass_through}
     
+class ConcatenationWithBlockFusor(GeneralFusor):
+    def __init__(self, in_channels, out_channel) -> None:
+        super().__init__("fusor_concatenation", out_channel)
+        self.model = Conv2dBNGELU(in_channels, out_channel)
+
+    def forward(self, x):
+        fusing_tensor, pass_through = get_fusing_tensor_and_pass_through(x)
+        return {"z": self.model(torch.concat(fusing_tensor, axis=1)), **pass_through}
+
 class ConcatenationWithTokenMixer(GeneralFusor):
     def __init__(self, in_channels, out_channel) -> None:
         super().__init__("fusor_concatenation_with_token_mixer", out_channel)
-        self.model = nn.Conv2d(in_channels, out_channel, kernel_size=1, padding=0, stride=1)
+        self.model = nn.Conv2d(
+            in_channels, out_channel, kernel_size=1, padding=0, stride=1
+        )
 
     def forward(self, x):
-        fusing_tensor, pass_through= get_fusing_tensor_and_pass_through(x)
+        fusing_tensor, pass_through = get_fusing_tensor_and_pass_through(x)
         return {"z": self.model(torch.concat(fusing_tensor, axis=1)), **pass_through}
-    
 
-class ConcatenationWithNormActivationTokenMixer(GeneralFusor):
+class ConcatenationWithBlockTokenMixer(GeneralFusor):
     def __init__(self, in_channels, out_channel, in_dim) -> None:
         super().__init__("fusor_concatenation_with_token_mixer", out_channel)
-        self.model =nn.Sequential(
+        self.model = nn.Sequential(
             *[
                 nn.Conv2d(in_channels, out_channel, kernel_size=1, padding=0, stride=1),
                 nn.LayerNorm([int(out_channel), int(in_dim), int(in_dim)]),
                 nn.GELU(),
             ]
-        )  
+        )
 
     def forward(self, x):
-        fusing_tensor, pass_through= get_fusing_tensor_and_pass_through(x)
+        fusing_tensor, pass_through = get_fusing_tensor_and_pass_through(x)
         return {"z": self.model(torch.concat(fusing_tensor, axis=1)), **pass_through}
-    
-
-

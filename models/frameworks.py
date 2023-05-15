@@ -44,7 +44,9 @@ class ExtractFusePerform(nn.Module):
             {k: self.feature_extractors[k](x) for k in self.feature_extractors.keys()}
         )
 
-        self.feature_maps = feature_maps
+        # self.feature_maps = feature_maps
+        # raise StopIteration()
+
         # k is the task name or extractor name.
 
         fused = self.fusor(feature_maps)

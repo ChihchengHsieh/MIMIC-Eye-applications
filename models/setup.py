@@ -187,7 +187,7 @@ class ModelSetup:
 
     clinical_cat_emb_dim: int = 32
     clinical_conv_channels: int = 32
-    clinical_upsample: str = "deconv"
+    clinical_upsample: str = "deconv" #['deconv', 'repeat', 'interpolate']
 
     chexpert_label_cols: List[str] = field(
         default_factory=lambda: [

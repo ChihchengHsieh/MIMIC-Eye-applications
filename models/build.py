@@ -27,26 +27,26 @@ def create_model_from_setup(setup: ModelSetup):
     clinical_extractor_name = SourceStrs.CLINICAL
     clinical_extractor = None
     if clinical_extractor_name in setup.sources:
-        if setup.clinical_use_expander:
-            clinical_extractor = TabularFeatureExpander(
-                source_name=clinical_extractor_name,
-                all_cols=setup.clinical_cat + setup.clinical_num,
-                categorical_col_maps=setup.categorical_col_maps,
-                embedding_dim=setup.clinical_cat_emb_dim,
-                out_dim=feature_map_dim[-1],
-                out_channels=setup.backbone_out_channels,
-            )
-        else:
-            clinical_extractor = TabularFeatureExtractor(
-                source_name=clinical_extractor_name,
-                all_cols=setup.clinical_cat + setup.clinical_num,
-                categorical_col_maps=setup.categorical_col_maps,
-                embedding_dim=setup.clinical_cat_emb_dim,
-                out_dim=feature_map_dim[-1],
-                conv_channels=setup.clinical_conv_channels,
-                out_channels=setup.backbone_out_channels,
-                upsample=setup.clinical_upsample,
-            )
+        # if setup.clinical_use_expander:
+        #     clinical_extractor = TabularFeatureExpander(
+        #         source_name=clinical_extractor_name,
+        #         all_cols=setup.clinical_cat + setup.clinical_num,
+        #         categorical_col_maps=setup.categorical_col_maps,
+        #         embedding_dim=setup.clinical_cat_emb_dim,
+        #         out_dim=feature_map_dim[-1],
+        #         out_channels=setup.backbone_out_channels,
+        #     )
+        # else:
+        clinical_extractor = TabularFeatureExtractor(
+            source_name=clinical_extractor_name,
+            all_cols=setup.clinical_cat + setup.clinical_num,
+            categorical_col_maps=setup.categorical_col_maps,
+            embedding_dim=setup.clinical_cat_emb_dim,
+            out_dim=feature_map_dim[-1],
+            conv_channels=setup.clinical_conv_channels,
+            out_channels=setup.backbone_out_channels,
+            upsample=setup.clinical_upsample,
+        )
 
         feature_extractors.update({clinical_extractor_name: clinical_extractor})
 
@@ -76,12 +76,19 @@ def create_model_from_setup(setup: ModelSetup):
             in_channels=setup.backbone_out_channels * len(feature_extractors),
             out_channel=setup.backbone_out_channels,
         )
-    elif setup.fusor == FusionStrs.CONCAT_WITH_NORM_ACT_TOKENMIXER:
-        fusor = ConcatenationWithNormActivationTokenMixer(
+    elif setup.fusor == FusionStrs.CONCAT_WITH_BLOCK_TOKENMIXER:
+        fusor = ConcatenationWithBlockTokenMixer(
             in_channels=setup.backbone_out_channels * len(feature_extractors),
             out_channel=setup.backbone_out_channels,
             in_dim=feature_map_dim[-1],
         )
+    elif setup.fusor == FusionStrs.CONCAT_WITH_BLOCK:
+        fusor = ConcatenationWithBlockFusor(
+            in_channels=setup.backbone_out_channels * len(feature_extractors),
+            out_channel=setup.backbone_out_channels,
+        )
+        
+
     else:
         ValueError(f"Unsupported fusion method: [{setup.fusor}]")
 

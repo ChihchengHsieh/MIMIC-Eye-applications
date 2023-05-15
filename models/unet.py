@@ -1,7 +1,7 @@
 import torch.nn as nn
 import torch.nn.functional as F
 
-from models.components.general import Conv2dBNReLu
+from models.components.general import Conv2dBNGELU
 
 
 class DecoderBlock(nn.Module):
@@ -11,8 +11,8 @@ class DecoderBlock(nn.Module):
         super().__init__()
 
         self.convs = nn.Sequential(
-            Conv2dBNReLu(in_channels, out_channels, kernel_size=3, padding=1,),
-            Conv2dBNReLu(out_channels, out_channels, kernel_size=3, padding=1,),
+            Conv2dBNGELU(in_channels, out_channels, kernel_size=3, padding=1,),
+            Conv2dBNGELU(out_channels, out_channels, kernel_size=3, padding=1,),
         )
 
     def forward(self, x):
