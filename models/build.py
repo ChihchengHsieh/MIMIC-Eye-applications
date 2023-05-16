@@ -37,17 +37,26 @@ def create_model_from_setup(setup: ModelSetup):
         #         out_channels=setup.backbone_out_channels,
         #     )
         # else:
+        # backbone = get_normal_backbone(setup)
+        
+        backbone=None
+        if setup.using_backbone_for_clinical:
+            backbone = get_normal_backbone(setup)
+
         clinical_extractor = TabularFeatureExtractor(
+            backbone=backbone,
             source_name=clinical_extractor_name,
             all_cols=setup.clinical_cat + setup.clinical_num,
             categorical_col_maps=setup.categorical_col_maps,
-            embedding_dim=setup.clinical_cat_emb_dim,
-            out_dim=feature_map_dim[-1],
+            embedding_dim=setup.clinical_cat_emb_dim,  
+            # out_dim=,
+            out_dim=setup.image_size if backbone else feature_map_dim[-1],
             conv_channels=setup.clinical_conv_channels,
             out_channels=setup.backbone_out_channels,
             upsample=setup.clinical_upsample,
         )
-
+        if backbone:
+            feature_map_dim = [backbone.out_channels, backbone.out_dim, backbone.out_dim]
         feature_extractors.update({clinical_extractor_name: clinical_extractor})
 
     fixation_extractor_name = SourceStrs.FIXATIONS

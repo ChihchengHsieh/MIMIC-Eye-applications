@@ -212,8 +212,7 @@ def plot_ap_ars(
 
 def get_plot_performance(performance):
     performance_for_plot = {}
-
-
+    
     for split, p_list in performance.items():
         for p in p_list:
             for task, task_metrics in p.items():
@@ -296,6 +295,7 @@ def plot_performance(performance, all_tasks, fig_title=None,) -> Figure:
     #                 axes_idx_map[f"{t}_{k}"] = current_idx
     #                 current_idx += 1
     #         break
+
 
     performance_for_plot = get_plot_performance(performance=performance)
 

@@ -40,7 +40,7 @@ class RepeatExpander(nn.Module):
             nn.Linear(in_channels, out_channels),
             nn.BatchNorm1d(out_channels),
             nn.GELU(),
-            nn.Linear(out_channels, out_channels)
+            nn.Linear(out_channels, out_channels),
         )
         self.out_dim = out_dim
 
@@ -255,13 +255,15 @@ class TabularFeatureExtractor(GeneralFeatureExtractor):
         embedding_dim: int,
         out_dim: int,
         conv_channels,
-        out_channels,
         upsample,
+        out_channels=None,
+        backbone=None,
     ) -> None:
         super().__init__("extractor-tabular")
         self.source_name = source_name
         self.has_cat = len(categorical_col_maps) > 0
         self.has_num = len(all_cols) - len(categorical_col_maps) > 0
+        self.backbone = backbone
 
         if self.has_cat:
             self.embs = nn.ModuleDict(
@@ -286,7 +288,7 @@ class TabularFeatureExtractor(GeneralFeatureExtractor):
         if upsample == "repeat":
             self.spatialisations = RepeatExpander(
                 out_dim=out_dim,
-                out_channels=out_channels,
+                out_channels=3 if self.backbone else out_channels,
                 in_channels=self.deconv_in_channels,
             )
         else:
@@ -312,7 +314,7 @@ class TabularFeatureExtractor(GeneralFeatureExtractor):
                     + [
                         SpatialisationBlock(
                             in_channels=conv_channels,
-                            out_channels=out_channels,
+                            out_channels=3 if self.backbone else out_channels,
                             upsample=upsample,
                             last_activation=False,
                         )
@@ -349,6 +351,9 @@ class TabularFeatureExtractor(GeneralFeatureExtractor):
             tabular_input = num_data
 
         output = self.spatialisations(tabular_input[:, :, None, None])
+
+        if self.backbone:
+            output = self.backbone(output)
 
         return {"output_f": output, "tabular_input": tabular_input}
 

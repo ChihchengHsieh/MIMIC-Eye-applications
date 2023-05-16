@@ -36,6 +36,8 @@ class ModelSetup:
 
     fusor: str = "element-wise sum"
 
+    using_backbone_for_clinical: bool = True
+
     # heatmap generation
     decoder_channels: List[int] = field(default_factory=lambda: [64, 32, 16, 8, 1])
 
@@ -187,7 +189,7 @@ class ModelSetup:
 
     clinical_cat_emb_dim: int = 32
     clinical_conv_channels: int = 32
-    clinical_upsample: str = "deconv" #['deconv', 'repeat', 'interpolate']
+    clinical_upsample: str = "deconv"  # ['deconv', 'repeat', 'interpolate']
 
     chexpert_label_cols: List[str] = field(
         default_factory=lambda: [
@@ -227,11 +229,29 @@ class ModelSetup:
         ]
     )
 
-    performance_standard_task: str = TaskStrs.LESION_DETECTION
-    performance_standard_metric: str = "ap"
+    # performance_standard_task: str = TaskStrs.LESION_DETECTION
+    # performance_standard_metric: str = "ap"
+
+    performance_standards: List = field(
+        default_factory=lambda: [
+            {
+                "task": TaskStrs.LESION_DETECTION,
+                "metric": "ap",
+            },
+            {
+                "task": TaskStrs.LESION_DETECTION,
+                "metric": "froc",
+            },
+            {
+                "task": TaskStrs.LESION_DETECTION,
+                "metric": "ar",
+            },
+        ]
+    )
+
     random_flip: bool = True
 
-    use_clinical_df:bool = False,
+    use_clinical_df: bool = (False,)
 
     use_dynamic_weight: bool = False
 
@@ -278,6 +298,3 @@ class ModelSetup:
             return self.clinical_input_channels
 
         return self.get_clinical_num_len()
-    
-
-    

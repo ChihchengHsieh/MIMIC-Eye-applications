@@ -46,6 +46,9 @@ class TrainingTimer(object):
         self,
     ):
         return (datetime.now() - self.start_t).seconds
+    
+def get_task_metric_name_from_standard(standard):
+    return f"{standard['task']}_{standard['metric']}"
 
 
 class TrainingInfo:
@@ -62,8 +65,11 @@ class TrainingInfo:
         self.last_train_evaluator = None
         self.test_evaluator = None
 
-        self.best_val_performance = -np.inf
-        self.best_performance_model_path = None
+        # self.best_val_performance = -np.inf
+        # self.best_performance_model_path = None
+
+        self.best_val_performance = {}
+        self.best_performance_model_path = {}
 
         self.final_model_path = None
         self.previous_ar_model = None
