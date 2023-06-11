@@ -20,6 +20,7 @@ from data.strs import TaskStrs
 from data.utils import chain_map
 from models.components.feature_extractors import ImageFeatureExtractor
 from models.components.task_performers import (
+    ContrastiveLearningPerformer,
     HeatmapGenerationPerformer,
     MultiBinaryClassificationPerformer,
     ObjectDetectionPerformer,
@@ -38,13 +39,15 @@ from .pred import pred_thrs_check
 from torch.utils.data import DataLoader, Dataset
 from torch.optim.optimizer import Optimizer
 import torch.nn.functional as F
+import torchmetrics
+
 
 cpu_device = torch.device("cpu")
 
-class MemoryUsageReocrds():
+
+class MemoryUsageReocrds:
     cpu_memory = []
     gpu_memory = []
-    
 
 
 def get_iou_types(model: nn.Module, setup: ModelSetup) -> List[str]:
@@ -171,6 +174,7 @@ class RegressionEvaluator:
             "r2": self.get_regression_score(r2_score),
         }
 
+
 class ClassificationEvaluator:
     def __init__(self) -> None:
         self.preds = []
@@ -202,6 +206,46 @@ class ClassificationEvaluator:
             "accuracy": self.get_clf_score(accuracy_score, has_threshold=0.5),
             "recall": self.get_clf_score(recall_score, has_threshold=0.5),
             "auc": self.get_clf_score(roc_auc_score, has_threshold=0.5),
+        }
+
+
+class ContrastiveLearningEvaluator(object):
+    def __init__(self, batch_size) -> None:
+        self.logits = []
+        self.labels = []
+        # self.top1_acc_train = torchmetrics.Accuracy(
+        #     task="multiclass", top_k=1, num_classes=batch_size
+        # )
+
+    def update(self, logits, targets):
+        for l in logits:
+            self.logits.append(l.to(cpu_device).detach())  # .numpy())
+
+        for t in targets:
+            self.labels.append(t.to(cpu_device).detach())  # .numpy())
+
+    def get_accuracy(
+        self,
+    ):
+        max_len = max([len(l) for l in self.logits])
+        padded_logits = [
+            F.pad(l, (0, max_len - len(l)), "constant", -np.inf) for l in self.logits
+        ]
+        padded_logits = torch.stack(padded_logits, dim=0)
+        top1_acc_train = torchmetrics.Accuracy(
+            task="multiclass", top_k=1, num_classes=padded_logits.shape[-1]
+        )
+
+        return top1_acc_train(
+            padded_logits,
+            torch.stack(self.labels, dim=0),
+        )
+
+    def get_performance_dict(
+        self,
+    ):
+        return {
+            "accuracy": self.get_accuracy(),
         }
 
 
@@ -251,6 +295,10 @@ def train_one_epoch(
                 evaluators[k] = ClassificationEvaluator()
             elif isinstance(v, RegressionPerformer):
                 evaluators[k] = RegressionEvaluator()
+            elif isinstance(v, ContrastiveLearningPerformer):
+                evaluators[k] = ContrastiveLearningEvaluator(
+                    batch_size=setup.batch_size,
+                )
             else:
                 raise ValueError(f"Task-{k} doesn't have an evaluator.")
 
@@ -361,7 +409,6 @@ def train_one_epoch(
         # MemoryUsageReocrds.cpu_memory.append(print_cpu_ram_usage())
         # MemoryUsageReocrds.gpu_memory.append(print_gpu_ram_usage())
 
-
         if evaluate_on_run:
             for k in model.task_performers.keys():
                 if isinstance(evaluators[k], CocoEvaluator):
@@ -399,7 +446,6 @@ def train_one_epoch(
                     # print_gpu_ram_usage()
                     # MemoryUsageReocrds.cpu_memory.append(print_cpu_ram_usage())
                     # MemoryUsageReocrds.gpu_memory.append(print_gpu_ram_usage())
-                    
 
                     if return_dt_gt:
                         # why the fixation model is okay with it?
@@ -407,7 +453,6 @@ def train_one_epoch(
                         # print(list(res.values())[0].keys())
                         # print(gts[0]['lesion-detection'].keys())
                         # raise StopIteration()s
-
 
                         import sys
 
@@ -424,6 +469,11 @@ def train_one_epoch(
                     # MemoryUsageReocrds.gpu_memory.append(print_gpu_ram_usage())
 
                     evaluators[k].update(res)
+                elif isinstance(evaluators[k], ContrastiveLearningEvaluator):
+                    evaluators[k].update(
+                        outputs[k]["outputs"],
+                        torch.arange(len(outputs[k]["outputs"]), device="cpu"),
+                    )
                 else:
                     evaluators[k].update(outputs[k]["outputs"], [t[k] for t in targets])
 
@@ -440,7 +490,6 @@ def train_one_epoch(
     # union = np.logical_or(target, prediction)
     # iou_score = np.sum(intersection) / np.sum(union)
     # or accuracy
-    
 
     # raise StopIteration()
     # print("ck11")
@@ -478,7 +527,7 @@ def train_one_epoch(
         # raise StopIteration()
 
         return evaluators, metric_logger
-    
+
     # print("ck13")
     # print_cpu_ram_usage()
     # print_gpu_ram_usage()
@@ -524,7 +573,11 @@ def evaluate(
         elif isinstance(v, MultiBinaryClassificationPerformer):
             evaluators[k] = ClassificationEvaluator()
         elif isinstance(v, RegressionPerformer):
-                evaluators[k] = RegressionEvaluator()
+            evaluators[k] = RegressionEvaluator()
+        elif isinstance(v, ContrastiveLearningPerformer):
+            evaluators[k] = ContrastiveLearningEvaluator(
+                batch_size=setup.batch_size,
+            )
         else:
             raise ValueError(f"Task-{k} doesn't have an evaluator.")
 
@@ -578,12 +631,15 @@ def evaluate(
                     all_gts.append(gts)
 
                 evaluators[k].update(res)
+
+            elif isinstance(evaluators[k], ContrastiveLearningEvaluator):
+                evaluators[k].update(
+                    outputs[k]["outputs"],
+                    torch.arange(len(outputs[k]["outputs"]), device="cpu"),
+                )
             else:
                 ## add the outputs and groundtruths
-                
 
-
-                
                 evaluators[k].update(outputs[k]["outputs"], [t[k] for t in targets])
 
             # model.evaluators = evaluators
@@ -611,4 +667,3 @@ def evaluate(
         evaluators["lesion-detection"].all_gts = all_gts
 
     return evaluators, metric_logger
-

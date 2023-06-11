@@ -7,6 +7,7 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 
+from lightly.models.modules import SimCLRProjectionHead
 from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
 from torchvision.models.detection.mask_rcnn import MaskRCNNPredictor, MaskRCNNHeads
 from torchvision.models.detection.faster_rcnn import (
@@ -31,6 +32,8 @@ from .rcnn import (
     XAMITwoMLPHead,
 )
 
+from ..loss import CLIPLoss
+
 
 class GeneralTaskPerformer(nn.Module):
     def __init__(self, name: str, loses: List[str], label_name_mapper=None) -> None:
@@ -46,6 +49,97 @@ class GeneralTaskPerformer(nn.Module):
         }
         """
         pass
+
+
+class ContrastiveLearningParameters(object):
+    def __init__(
+        self,
+        m1,
+        m2,
+        temperature,
+        pj_pooled_dim,
+        pj_embedding_dim,
+        pj_dim,
+        m1_pool=None,
+        m2_pool=None,
+        lambda_0=0.5,
+    ):
+        self.m1 = m1
+        self.m2 = m2
+        self.temperature = temperature
+        self.m1_pool = m1_pool
+        self.m2_pool = m2_pool
+
+        self.pj_pooled_dim = pj_pooled_dim
+        self.pj_embedding_dim = pj_embedding_dim
+        self.pj_dim = pj_dim
+
+        self.lambda_0 = lambda_0
+
+
+class ContrastiveLearningPerformer(GeneralTaskPerformer):
+    def __init__(self, params: ContrastiveLearningParameters) -> None:
+        super().__init__(
+            name="performer-contrastive_learning",
+            loses=[
+                "contrastive-loss",
+            ],
+        )
+
+        self.params = params
+        self.m1_pooler = self.__get_pooler(params.m1_pool)
+        self.m2_pooler = self.__get_pooler(params.m2_pool)
+        self.loss_fn = CLIPLoss(
+            temperature=params.temperature, lambda_0=params.lambda_0
+        )
+
+        self.m1_pj = SimCLRProjectionHead(
+            self.params.pj_pooled_dim,
+            self.params.pj_embedding_dim,
+            self.params.pj_dim,
+        )
+        self.m2_pj = SimCLRProjectionHead(
+            self.params.pj_pooled_dim,
+            self.params.pj_embedding_dim,
+            self.params.pj_dim,
+        )
+
+    def __get_pooler(self, pool):
+        if pool is None:
+            return None
+
+        if pool.lower() == "avg":
+            return nn.Sequential(
+                nn.AdaptiveAvgPool2d((1, 1)),
+                nn.Flatten(),
+            )
+        else:
+            raise NotImplementedError(f"pool type {pool} is not implemented.")
+
+    def forward(self, fused, targets):
+
+        z_m1 = fused[self.params.m1]
+        z_m2 = fused[self.params.m2]
+
+        ## pooler to have 1D tensor (N, D)
+
+        if self.m1_pooler:
+            z_m1 = self.m1_pooler(z_m1)
+
+        if self.m2_pooler:
+            z_m2 = self.m1_pooler(z_m2)
+
+        ## to projector
+
+        z_m1 = self.m1_pj(z_m1)
+        z_m2 = self.m2_pj(z_m2)
+
+        loss, logits = self.loss_fn(z_m1, z_m2)
+
+        return {
+            "losses": {"contrastive-loss": loss},
+            "outputs": logits,
+        }
 
 
 class ObjectDetectionParameters(object):
@@ -114,8 +208,9 @@ class ObjectDetectionParameters(object):
         self.use_1D_fusion = use_1D_fusion
         self.fusion_1D_source = fusion_1D_source
         self.clinical_ch = clinical_ch
-        self.use_mask:bool = use_mask
+        self.use_mask: bool = use_mask
         self.objectness_pos_weight = objectness_pos_weight
+
 
 class ObjectDetectionPerformer(GeneralTaskPerformer):
     def __init__(
@@ -150,18 +245,22 @@ class ObjectDetectionPerformer(GeneralTaskPerformer):
 
             mask_layers = (256, 256, 256, 256)
             mask_dilation = 1
-            mask_head = MaskRCNNHeads(params.backbone_out_channels, mask_layers, mask_dilation)
+            mask_head = MaskRCNNHeads(
+                params.backbone_out_channels, mask_layers, mask_dilation
+            )
 
             mask_predictor_in_channels = 256  # == mask_layers[-1]
             mask_dim_reduced = 256
             mask_predictor = MaskRCNNPredictor(
-                mask_predictor_in_channels, mask_dim_reduced, self.params.num_classes,
+                mask_predictor_in_channels,
+                mask_dim_reduced,
+                self.params.num_classes,
             )
 
             self.roi_heads.mask_roi_pool = mask_roi_pool
             self.roi_heads.mask_head = mask_head
             self.roi_heads.mask_predictor = mask_predictor
- 
+
     def forward(self, fused, targets):
         z = fused["z"]
 
@@ -169,7 +268,9 @@ class ObjectDetectionPerformer(GeneralTaskPerformer):
         if self.params.use_1D_fusion:
             k = f"{SourceStrs.CLINICAL}_tabular_input"
             all_keys = ", ".join(list(fused.keys()))
-            assert k in fused, f"Not {k} is found in fused dictionary. The keys in dictionary are {all_keys}."
+            assert (
+                k in fused
+            ), f"Not {k} is found in fused dictionary. The keys in dictionary are {all_keys}."
             tabular_input = fused[k]
 
         batch_size = z.shape[0]
@@ -234,7 +335,8 @@ class ObjectDetectionPerformer(GeneralTaskPerformer):
         )
 
         rpn_head = RPNHead(
-            self.params.backbone_out_channels, rpn_anchor_generator.num_anchors_per_location()[0]
+            self.params.backbone_out_channels,
+            rpn_anchor_generator.num_anchors_per_location()[0],
         )
 
         rpn_pre_nms_top_n = dict(
@@ -277,7 +379,9 @@ class ObjectDetectionPerformer(GeneralTaskPerformer):
         in_ch = self.params.backbone_out_channels * resolution**2
         box_head = XAMITwoMLPHead(
             use_1D_fusion=params.use_1D_fusion,
-            in_channels=  in_ch + self.params.clinical_ch if self.params.use_1D_fusion else in_ch
+            in_channels=in_ch + self.params.clinical_ch
+            if self.params.use_1D_fusion
+            else in_ch
             if params.use_1D_fusion
             else in_ch,
             representation_size=params.XAMITwoMLPHead_representation_size,
@@ -437,7 +541,6 @@ class MultiBinaryClassificationPerformer(GeneralTaskPerformer):
             raise ValueError(
                 "Pooling should be one of ('max', 'avg'), got {}.".format(params.pool)
             )
-
         self.model = nn.Sequential(
             nn.AdaptiveAvgPool2d(1) if params == "avg" else nn.AdaptiveMaxPool2d(1),
             nn.Flatten(),

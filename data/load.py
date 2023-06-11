@@ -1,8 +1,9 @@
 import torch, random
 import numpy as np
+import torch.utils.data as data
 
 from typing import Dict, Tuple
-from .datasets import ReflacxDataset, collate_fn
+from .datasets import PhysioNetClincalDataset, ReflacxDataset, collate_fn
 from .transforms import get_tensorise_h_flip_transform
 from torch.utils.data import DataLoader
 
@@ -40,30 +41,35 @@ def get_dataloader_g(seed: int = 0):
 
 #     return detect_eval_dataset, train_dataset, val_dataset, test_dataset
 
-
 def get_datasets(
     dataset_params_dict: Dict,
-) -> Tuple[ReflacxDataset, ReflacxDataset, ReflacxDataset, ReflacxDataset]:
+    using_reflacx = True,
+) -> Tuple[data.Dataset, data.Dataset, data.Dataset, data.Dataset]:
+    
+    if using_reflacx:
+        ds = ReflacxDataset
+    else:
+        ds = PhysioNetClincalDataset
 
-    detect_eval_dataset = ReflacxDataset(
+    detect_eval_dataset = ds(
         **{
             **dataset_params_dict,
         },
     )
 
-    train_dataset = ReflacxDataset(
+    train_dataset = ds(
         **dataset_params_dict,
         split_str="train",
         random_flip=True,
     )
 
-    val_dataset = ReflacxDataset(
+    val_dataset = ds(
         **dataset_params_dict,
         split_str="val",
         random_flip=False,
     )
 
-    test_dataset = ReflacxDataset(
+    test_dataset = ds(
         **dataset_params_dict,
         split_str="test",
         random_flip=False,
@@ -72,10 +78,42 @@ def get_datasets(
     return detect_eval_dataset, train_dataset, val_dataset, test_dataset
 
 
+
+# def get_datasets(
+#     dataset_params_dict: Dict,
+# ) -> Tuple[ReflacxDataset, ReflacxDataset, ReflacxDataset, ReflacxDataset]:
+
+#     detect_eval_dataset = ReflacxDataset(
+#         **{
+#             **dataset_params_dict,
+#         },
+#     )
+
+#     train_dataset = ReflacxDataset(
+#         **dataset_params_dict,
+#         split_str="train",
+#         random_flip=True,
+#     )
+
+#     val_dataset = ReflacxDataset(
+#         **dataset_params_dict,
+#         split_str="val",
+#         random_flip=False,
+#     )
+
+#     test_dataset = ReflacxDataset(
+#         **dataset_params_dict,
+#         split_str="test",
+#         random_flip=False,
+#     )
+
+#     return detect_eval_dataset, train_dataset, val_dataset, test_dataset
+
+
 def get_dataloaders(
-    train_dataset: ReflacxDataset,
-    val_dataset: ReflacxDataset,
-    test_dataset: ReflacxDataset,
+    train_dataset: data.Dataset,
+    val_dataset: data.Dataset,
+    test_dataset: data.Dataset,
     batch_size: int = 4,
     seed: int = 0,
 ) -> Tuple[DataLoader, DataLoader, DataLoader]:
@@ -87,6 +125,7 @@ def get_dataloaders(
         collate_fn=collate_fn,
         worker_init_fn=seed_worker,
         generator=get_dataloader_g(seed),
+        # drop_last=True,
     )
 
     val_dataloader = DataLoader(
@@ -96,6 +135,7 @@ def get_dataloaders(
         collate_fn=collate_fn,
         worker_init_fn=seed_worker,
         generator=get_dataloader_g(seed),
+        # drop_last=True,
     )
 
     test_dataloader = DataLoader(
@@ -105,6 +145,7 @@ def get_dataloaders(
         collate_fn=collate_fn,
         worker_init_fn=seed_worker,
         generator=get_dataloader_g(seed),
+        # drop_last=True,
     )
 
     return train_dataloader, val_dataloader, test_dataloader

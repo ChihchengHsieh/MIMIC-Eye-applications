@@ -623,6 +623,20 @@ def get_performance(
             }
         )
 
+    if TaskStrs.XRAY_CLINICAL_CL in all_tasks:
+        performance_dict.update(
+            {
+                TaskStrs.XRAY_CLINICAL_CL: evaluator[
+                    TaskStrs.XRAY_CLINICAL_CL
+                ].get_performance_dict()
+                #     {
+                #     "auc": evaluator[
+                #         TaskStrs.CHEXPERT_CLASSIFICATION
+                #     ].get_clf_score(roc_auc_score)
+                # }
+            }
+        )
+
     """
     clinical data
     """

@@ -13,11 +13,14 @@ class TaskStrs:
     DBP_REGRESSION = "dpb-regression"
     ACUITY_REGRESSION = "acuity-regression"
     GENDER_CLASSIFICATION = "gender-classification"
+    
+    XRAY_CLINICAL_CL = "xray-clinical-cl"
 
 class SourceStrs:
     XRAYS = "xrays"
     CLINICAL = "clinical"
     FIXATIONS = "fixations"
+    CLINICAL_1D = "clinical_1d"
 
 
 class FusionStrs:
@@ -25,6 +28,7 @@ class FusionStrs:
     HADAMARD_PRODUCT = "hadamard product"
     NO_ACTION = "no-action"
     CONCAT = "concat"
+    CONCAT_DEFORM = "concat_deform"
     CONCAT_WITH_BLOCK = "concat_with_block"
     CONCAT_WITH_TOKENMIXER = "concat_with_token_mixer"
     CONCAT_WITH_BLOCK_TOKENMIXER = "concat_with_block_token_mixer"

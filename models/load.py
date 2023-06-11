@@ -9,6 +9,31 @@ from .train import TrainingInfo
 from torch.optim.optimizer import Optimizer
 from .setup import ModelSetup
 
+class CLPretrainedLoadParams:
+    def __init__(self, model_name, model_part, fix_weight) -> None:
+        self.model_name = model_name
+        self.model_part = model_part
+        self.fix_wieght = fix_weight
+
+def load_cl_pretrained(model, model_name, load_part, fix_weight):
+    # set load_part = "feature_extractors.xrays" to load the pretrained image backbone.
+    device = next(model.parameters()).device
+
+    cp: Dict = torch.load(
+        os.path.join("trained_models", model_name), map_location=device
+    )
+
+    load_part_dict = {k:v  for k,v  in cp['model_state_dict'].items() if k.startswith(load_part)}
+    model.load_state_dict(load_part_dict, strict=False)
+
+    if fix_weight:
+        for n, param in model.named_parameters():
+            if n.startswith(load_part):
+                param.requires_grad = False
+        load_part_params = list(filter(lambda p: p.requires_grad, [ param for n, param in model.named_parameters() if n.startswith(load_part)]))
+        assert len(load_part_params)==0
+    
+    return model
 
 def get_trained_model(
     model_select, device,

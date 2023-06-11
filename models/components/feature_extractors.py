@@ -154,6 +154,12 @@ class ImageFeatureExtractor(GeneralFeatureExtractor):
         self.fix_backbone = x
         print(f"backbone weights fix status: {self.fix_backbone}")
 
+class ImageFeatureExtractor1D(nn.Module):
+    def __init__(self) -> None:
+        super().__init__()
+        # what's the backbone that model use?
+        # A: resnet50
+
 
 # class TabularFeatureExpander(GeneralFeatureExtractor):
 #     def __init__(
@@ -238,6 +244,87 @@ class ImageFeatureExtractor(GeneralFeatureExtractor):
 #         )
 
 #         return {"output_f": output, "tabular_input": tabular_input}
+
+class TabularFeature1DExtractor(GeneralFeatureExtractor):
+    """
+    categorical_col_maps:{
+        category_name: number of category
+    }
+    """
+
+    def __init__(
+        self,
+        source_name: str,
+        all_cols: list,
+        categorical_col_maps: Dict,
+        embedding_dim: int,
+        out_channels:int,
+    ) -> None:
+        super().__init__("extractor-tabular")
+        self.source_name = source_name
+        self.has_cat = len(categorical_col_maps) > 0
+        self.has_num = len(all_cols) - len(categorical_col_maps) > 0
+        self.out_channels = out_channels
+
+        if self.has_cat:
+            self.embs = nn.ModuleDict(
+                {
+                    k: nn.Embedding(v, embedding_dim)
+                    for k, v in categorical_col_maps.items()
+                }
+            )
+
+        self.all_cols = all_cols
+        self.categorical_col_maps = categorical_col_maps
+        self.embedding_dim = embedding_dim
+
+        self.encoder_in_channels = (len(all_cols) - len(categorical_col_maps)) + (
+            len(categorical_col_maps) * embedding_dim
+        )
+
+        print(self.encoder_in_channels)
+        print(self.out_channels)
+
+        self.encoder = nn.Sequential(
+            nn.Linear(self.encoder_in_channels, self.out_channels),
+            nn.BatchNorm1d(self.out_channels),
+            nn.ReLU(),
+            nn.Linear(self.out_channels, self.out_channels)
+        )
+
+    def forward(self, x):
+        """
+        {
+            'cat' : categorical tabular data,
+            'num' : numerical tabular data,
+        }
+        """
+
+        cat_data = [x_i[self.source_name]["cat"] for x_i in x]
+        num_data = [x_i[self.source_name]["num"] for x_i in x]
+
+        cat_data = chain_map(cat_data)
+        cat_data = {k: torch.stack(v, dim=0) for k, v in cat_data.items()}
+        num_data = torch.stack(num_data)
+        # x = x[self.source_name]
+
+        if self.has_cat:
+            emb_out = OrderedDict({k: self.embs[k](v) for k, v in cat_data.items()})
+            emb_out_cat = torch.concat(list(emb_out.values()), axis=1)
+
+            if self.has_num:
+                tabular_input = torch.concat([num_data, emb_out_cat], dim=1)
+            else:
+                tabular_input = emb_out_cat
+
+        else:
+            tabular_input = num_data
+
+        output = self.encoder(tabular_input)
+
+        return {"output": output}
+
+
 
 
 class TabularFeatureExtractor(GeneralFeatureExtractor):

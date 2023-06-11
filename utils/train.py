@@ -15,7 +15,6 @@ from datetime import datetime
 
 
 def get_optimiser(params, setup: ModelSetup) -> Optimizer:
-
     if setup.optimiser == "adamw":
         print(f"Using AdamW as optimizer with lr={setup.lr}")
         optimiser = torch.optim.AdamW(

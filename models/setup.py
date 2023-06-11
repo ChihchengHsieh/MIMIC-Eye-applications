@@ -251,7 +251,8 @@ class ModelSetup:
 
     random_flip: bool = True
 
-    use_clinical_df: bool = (False,)
+    use_clinical_df: bool = False
+    use_physionet_df: bool = False
 
     use_dynamic_weight: bool = False
 
@@ -269,6 +270,15 @@ class ModelSetup:
     clinical_use_expander: bool = False
 
     objectness_pos_weight: float = 1
+
+    real_stop_patience: int = 10
+
+    cl_temp: float = 0.1
+    cl_lambda_0: float = 0.5
+
+    cl_pretrained_load_params: list = field(default_factory=lambda: [])
+
+    cl_pj_dim: int = 128
 
     def has_categorical_clinical_features(
         self,

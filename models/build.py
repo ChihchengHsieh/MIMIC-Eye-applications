@@ -24,6 +24,17 @@ def create_model_from_setup(setup: ModelSetup):
         feature_extractors.update({xrays_extractor_name: xray_extractor})
         feature_map_dim = [backbone.out_channels, backbone.out_dim, backbone.out_dim]
 
+    clinical_1d_extractor_name = SourceStrs.CLINICAL_1D
+    if clinical_1d_extractor_name in setup.sources:
+        clinical_1D_extractor = TabularFeature1DExtractor(
+            source_name=SourceStrs.CLINICAL,
+            all_cols=setup.clinical_cat + setup.clinical_num,
+            categorical_col_maps=setup.categorical_col_maps,
+            embedding_dim=setup.clinical_cat_emb_dim,
+            out_channels=feature_map_dim[0],
+        )
+        feature_extractors.update({clinical_1d_extractor_name: clinical_1D_extractor})
+
     clinical_extractor_name = SourceStrs.CLINICAL
     clinical_extractor = None
     if clinical_extractor_name in setup.sources:
@@ -38,8 +49,8 @@ def create_model_from_setup(setup: ModelSetup):
         #     )
         # else:
         # backbone = get_normal_backbone(setup)
-        
-        backbone=None
+
+        backbone = None
         if setup.using_backbone_for_clinical:
             backbone = get_normal_backbone(setup)
 
@@ -48,7 +59,7 @@ def create_model_from_setup(setup: ModelSetup):
             source_name=clinical_extractor_name,
             all_cols=setup.clinical_cat + setup.clinical_num,
             categorical_col_maps=setup.categorical_col_maps,
-            embedding_dim=setup.clinical_cat_emb_dim,  
+            embedding_dim=setup.clinical_cat_emb_dim,
             # out_dim=,
             out_dim=setup.image_size if backbone else feature_map_dim[-1],
             conv_channels=setup.clinical_conv_channels,
@@ -56,7 +67,11 @@ def create_model_from_setup(setup: ModelSetup):
             upsample=setup.clinical_upsample,
         )
         if backbone:
-            feature_map_dim = [backbone.out_channels, backbone.out_dim, backbone.out_dim]
+            feature_map_dim = [
+                backbone.out_channels,
+                backbone.out_dim,
+                backbone.out_dim,
+            ]
         feature_extractors.update({clinical_extractor_name: clinical_extractor})
 
     fixation_extractor_name = SourceStrs.FIXATIONS
@@ -70,33 +85,37 @@ def create_model_from_setup(setup: ModelSetup):
         feature_map_dim = [backbone.out_channels, backbone.out_dim, backbone.out_dim]
 
     if setup.fusor == FusionStrs.NO_ACTION:
-        fusor = NoActionFusor(out_channel=setup.backbone_out_channels)
+        fusor = NoActionFusor(out_channel=feature_map_dim[0])
     elif setup.fusor == FusionStrs.ElEMENTWISE_SUM:
-        fusor = ElementwiseSumFusor(out_channel=setup.backbone_out_channels)
+        fusor = ElementwiseSumFusor(out_channel=feature_map_dim[0])
     elif setup.fusor == FusionStrs.HADAMARD_PRODUCT:
-        fusor = HadamardProductFusor(out_channel=setup.backbone_out_channels)
+        fusor = HadamardProductFusor(out_channel=feature_map_dim[0])
     elif setup.fusor == FusionStrs.CONCAT:
         fusor = ConcatenationFusor(
-            in_channels=setup.backbone_out_channels * len(feature_extractors),
-            out_channel=setup.backbone_out_channels,
+            in_channels=feature_map_dim[0] * len(feature_extractors),
+            out_channel=feature_map_dim[0],
         )
     elif setup.fusor == FusionStrs.CONCAT_WITH_TOKENMIXER:
         fusor = ConcatenationWithTokenMixer(
-            in_channels=setup.backbone_out_channels * len(feature_extractors),
-            out_channel=setup.backbone_out_channels,
+            in_channels=feature_map_dim[0] * len(feature_extractors),
+            out_channel=feature_map_dim[0],
         )
     elif setup.fusor == FusionStrs.CONCAT_WITH_BLOCK_TOKENMIXER:
         fusor = ConcatenationWithBlockTokenMixer(
-            in_channels=setup.backbone_out_channels * len(feature_extractors),
-            out_channel=setup.backbone_out_channels,
+            in_channels=feature_map_dim[0] * len(feature_extractors),
+            out_channel=feature_map_dim[0],
             in_dim=feature_map_dim[-1],
+        )
+    elif setup.fusor == FusionStrs.CONCAT_DEFORM:
+        fusor = ConcatenationDeformFusor(
+            in_channels=feature_map_dim[0] * len(feature_extractors),
+            out_channel=feature_map_dim[0],
         )
     elif setup.fusor == FusionStrs.CONCAT_WITH_BLOCK:
         fusor = ConcatenationWithBlockFusor(
-            in_channels=setup.backbone_out_channels * len(feature_extractors),
-            out_channel=setup.backbone_out_channels,
+            in_channels=feature_map_dim[0] * len(feature_extractors),
+            out_channel=feature_map_dim[0],
         )
-        
 
     else:
         ValueError(f"Unsupported fusion method: [{setup.fusor}]")
@@ -197,7 +216,6 @@ def create_model_from_setup(setup: ModelSetup):
         task_performers.update({gender_classification_task_name: gender_clf})
 
     # make the dataset, and add the tasks in model setup.
-
     lesion_detection_task_name = TaskStrs.LESION_DETECTION
     if lesion_detection_task_name in setup.tasks:
         lesion_params = ObjectDetectionParameters(
@@ -252,6 +270,27 @@ def create_model_from_setup(setup: ModelSetup):
             params=negbio_clf_params,
         )
         task_performers.update({negbio_classification_task_name: negbio_clf})
+
+    image_clinical_cl_task_name = TaskStrs.XRAY_CLINICAL_CL
+    if image_clinical_cl_task_name in setup.tasks:
+        cl_params = ContrastiveLearningParameters(
+            m1=f"{SourceStrs.XRAYS}_output_f",
+            m2=f"{SourceStrs.CLINICAL_1D}_output",
+            temperature=setup.cl_temp,
+            m1_pool="avg",
+            m2_pool=None,
+            lambda_0=setup.cl_lambda_0,
+            # task_name=negbio_classification_task_name,
+            # input_channel=fusor.out_channel,
+            # num_classes=len(setup.negbio_label_cols),
+            pj_dim=setup.cl_pj_dim,
+            pj_embedding_dim=feature_map_dim[0],
+            pj_pooled_dim=feature_map_dim[0],
+        )
+        cl_p = ContrastiveLearningPerformer(
+            params=cl_params,
+        )
+        task_performers.update({image_clinical_cl_task_name: cl_p})
 
     model = ExtractFusePerform(
         setup=setup,

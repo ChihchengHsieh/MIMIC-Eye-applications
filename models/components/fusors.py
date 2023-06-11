@@ -2,6 +2,7 @@ from torch import nn
 import torch
 
 from models.components.general import Conv2dBNGELU
+from models.components.deform import DeformConv2dBlock
 
 
 def get_fusing_tensor_and_pass_through(x: dict[dict : torch.Tensor]):
@@ -15,6 +16,13 @@ def get_fusing_tensor_and_pass_through(x: dict[dict : torch.Tensor]):
             else:
                 pass_through[f"{k}_{vk}"] = vv
     return fusing_tensors, pass_through
+
+def no_action_pass_through(x: dict[dict : torch.Tensor]):
+    pass_through = {}
+    for k, v in x.items():
+        for vk, vv in v.items():
+                pass_through[f"{k}_{vk}"] = vv
+    return pass_through
 
 
 class GeneralFusor(nn.Module):
@@ -32,9 +40,9 @@ class NoActionFusor(GeneralFusor):
         )
 
     def forward(self, x: dict[dict : torch.Tensor]):
-        assert len(x.keys()) == 1, "should only have one element in no action fusor"
-        fusing_tensor, pass_through = get_fusing_tensor_and_pass_through(x)
-        return {"z": fusing_tensor[0], **pass_through}
+        # assert len(x.keys()) == 1, "should only have one element in no action fusor"
+        pass_through = no_action_pass_through(x)
+        return {**pass_through}
 
 
 class ElementwiseSumFusor(GeneralFusor):
@@ -67,6 +75,15 @@ class ConcatenationFusor(GeneralFusor):
     def forward(self, x):
         fusing_tensor, pass_through = get_fusing_tensor_and_pass_through(x)
         return {"z": self.model(torch.concat(fusing_tensor, axis=1)), **pass_through}
+    
+class ConcatenationDeformFusor(GeneralFusor):
+    def __init__(self, in_channels, out_channel) -> None:
+        super().__init__("fusor_concatenation", out_channel)
+        self.model = DeformConv2dBlock(in_channels, out_channel, kernel_size=3, padding=1)
+
+    def forward(self, x):
+        fusing_tensor, pass_through = get_fusing_tensor_and_pass_through(x)
+        return {"z": self.model(torch.concat(fusing_tensor, axis=1)), **pass_through}   
     
 class ConcatenationWithBlockFusor(GeneralFusor):
     def __init__(self, in_channels, out_channel) -> None:
