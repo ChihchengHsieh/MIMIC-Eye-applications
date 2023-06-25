@@ -154,6 +154,7 @@ class ImageFeatureExtractor(GeneralFeatureExtractor):
         self.fix_backbone = x
         print(f"backbone weights fix status: {self.fix_backbone}")
 
+
 class ImageFeatureExtractor1D(nn.Module):
     def __init__(self) -> None:
         super().__init__()
@@ -245,6 +246,7 @@ class ImageFeatureExtractor1D(nn.Module):
 
 #         return {"output_f": output, "tabular_input": tabular_input}
 
+
 class TabularFeature1DExtractor(GeneralFeatureExtractor):
     """
     categorical_col_maps:{
@@ -258,12 +260,13 @@ class TabularFeature1DExtractor(GeneralFeatureExtractor):
         all_cols: list,
         categorical_col_maps: Dict,
         embedding_dim: int,
-        out_channels:int,
+        out_channels: int,
     ) -> None:
         super().__init__("extractor-tabular")
         self.source_name = source_name
         self.has_cat = len(categorical_col_maps) > 0
-        self.has_num = len(all_cols) - len(categorical_col_maps) > 0
+        self.num_numerical_cols = len(all_cols) - len(categorical_col_maps)
+        self.has_num = self.num_numerical_cols > 0
         self.out_channels = out_channels
 
         if self.has_cat:
@@ -278,18 +281,27 @@ class TabularFeature1DExtractor(GeneralFeatureExtractor):
         self.categorical_col_maps = categorical_col_maps
         self.embedding_dim = embedding_dim
 
-        self.encoder_in_channels = (len(all_cols) - len(categorical_col_maps)) + (
+        self.encoder_in_channels = self.num_numerical_cols + (
             len(categorical_col_maps) * embedding_dim
         )
 
-        print(self.encoder_in_channels)
-        print(self.out_channels)
+        # print(self.encoder_in_channels)
+        # print(self.out_channels)
 
+        # This is exact how the paper built it: https://arxiv.org/pdf/2303.14080.pdf
+        # # but in the original paper, one-hot encoding is used, which means the first Linear is served as embedding layer.
+        # self.encoder = nn.Sequential(
+        #     nn.Linear(self.encoder_in_channels, self.out_channels),
+        #     nn.BatchNorm1d(self.out_channels),
+        #     nn.ReLU(),
+        #     nn.Linear(self.out_channels, self.out_channels)
+        # )
+        # since we used embedding layer above, we altered to this one:
         self.encoder = nn.Sequential(
-            nn.Linear(self.encoder_in_channels, self.out_channels),
-            nn.BatchNorm1d(self.out_channels),
+            # nn.Linear(self.encoder_in_channels, self.out_channels),
+            nn.BatchNorm1d(self.encoder_in_channels),
             nn.ReLU(),
-            nn.Linear(self.out_channels, self.out_channels)
+            nn.Linear(self.encoder_in_channels, self.out_channels),
         )
 
     def forward(self, x):
@@ -305,7 +317,11 @@ class TabularFeature1DExtractor(GeneralFeatureExtractor):
 
         cat_data = chain_map(cat_data)
         cat_data = {k: torch.stack(v, dim=0) for k, v in cat_data.items()}
-        num_data = torch.stack(num_data)
+
+        num_data = None
+        if self.has_num > 0:
+            num_data = torch.stack(num_data)
+
         # x = x[self.source_name]
 
         if self.has_cat:
@@ -317,14 +333,14 @@ class TabularFeature1DExtractor(GeneralFeatureExtractor):
             else:
                 tabular_input = emb_out_cat
 
+            self.tabular_input = tabular_input
+
         else:
             tabular_input = num_data
 
         output = self.encoder(tabular_input)
 
         return {"output": output}
-
-
 
 
 class TabularFeatureExtractor(GeneralFeatureExtractor):
@@ -349,7 +365,8 @@ class TabularFeatureExtractor(GeneralFeatureExtractor):
         super().__init__("extractor-tabular")
         self.source_name = source_name
         self.has_cat = len(categorical_col_maps) > 0
-        self.has_num = len(all_cols) - len(categorical_col_maps) > 0
+        self.num_numerical_cols = len(all_cols) - len(categorical_col_maps)
+        self.has_num = self.num_numerical_cols > 0
         self.backbone = backbone
 
         if self.has_cat:
@@ -364,7 +381,7 @@ class TabularFeatureExtractor(GeneralFeatureExtractor):
         self.categorical_col_maps = categorical_col_maps
         self.embedding_dim = embedding_dim
 
-        self.deconv_in_channels = (len(all_cols) - len(categorical_col_maps)) + (
+        self.deconv_in_channels = self.num_numerical_cols + (
             len(categorical_col_maps) * embedding_dim
         )
 
@@ -422,7 +439,12 @@ class TabularFeatureExtractor(GeneralFeatureExtractor):
 
         cat_data = chain_map(cat_data)
         cat_data = {k: torch.stack(v, dim=0) for k, v in cat_data.items()}
-        num_data = torch.stack(num_data)
+
+        
+        num_data = None
+        if self.has_num > 0:
+            num_data = torch.stack(num_data)
+        # num_data = torch.stack(num_data)
         # x = x[self.source_name]
 
         if self.has_cat:

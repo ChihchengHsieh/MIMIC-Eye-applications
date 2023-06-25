@@ -36,7 +36,7 @@ def load_cl_pretrained(model, model_name, load_part, fix_weight):
     return model
 
 def get_trained_model(
-    model_select, device,
+    model_select, device
 ) -> Tuple[nn.Module, TrainingInfo, Union[Optimizer, None]]:
 
     with open(os.path.join("training_records", f"{model_select.value}.pkl"), "rb") as f:

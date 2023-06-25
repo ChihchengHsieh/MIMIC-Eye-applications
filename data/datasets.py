@@ -137,6 +137,7 @@ class PhysioNetClincalDataset(data.Dataset):
         #     self.fiaxtions_mode_input = fixations_mode_input
 
         # deciding which to df load
+        # self.use_discrete_clinical = use_discrete_clinical
         self.df_path = "physio_clinical_cxr_meta.csv"
 
         # raise StopIteration(f"The dataset now loading is {self.df_path}")
@@ -157,6 +158,31 @@ class PhysioNetClincalDataset(data.Dataset):
             c for c in self.df.columns if c.endswith("_chexpert")
         ]
         self.negbio_label_cols = [c for c in self.df.columns if c.endswith("_negbio")]
+
+        # remove all numerical cols:
+        # In case we used it somewhere.
+
+        cols_to_remove = [
+            "age",
+            "temperature",
+            "heartrate",
+            "resprate",
+            "o2sat",
+            "sbp",
+            "dbp",
+            # "pain",
+            "acuity",
+        ]
+
+        for col in cols_to_remove:
+            del self.df[col]
+
+        ## check if the col is still df:
+        for col in cols_to_remove:
+            if col in self.df.columns:
+                raise StopIteration(f"Column {col} is not removed from dataframe.")
+
+
 
         if self.with_clinical_input or self.with_clinical_label:
             self.preprocess_clinical_df()
