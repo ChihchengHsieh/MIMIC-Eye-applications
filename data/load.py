@@ -125,7 +125,7 @@ def get_dataloaders(
         collate_fn=collate_fn,
         worker_init_fn=seed_worker,
         generator=get_dataloader_g(seed),
-        # drop_last=True,
+        drop_last=True,
     )
 
     val_dataloader = DataLoader(
@@ -135,7 +135,7 @@ def get_dataloaders(
         collate_fn=collate_fn,
         worker_init_fn=seed_worker,
         generator=get_dataloader_g(seed),
-        # drop_last=True,
+        drop_last=True,
     )
 
     test_dataloader = DataLoader(
@@ -145,7 +145,7 @@ def get_dataloaders(
         collate_fn=collate_fn,
         worker_init_fn=seed_worker,
         generator=get_dataloader_g(seed),
-        # drop_last=True,
+        drop_last=True,  # if we don't make it == True, we may get a batch with only size=1
     )
 
     return train_dataloader, val_dataloader, test_dataloader

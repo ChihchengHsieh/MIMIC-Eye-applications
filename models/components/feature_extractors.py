@@ -248,6 +248,7 @@ class ImageFeatureExtractor1D(nn.Module):
 
 
 class TabularFeature1DExtractor(GeneralFeatureExtractor):
+    # This extractor is used now mainly for contrastive learning (pre-training)
     """
     categorical_col_maps:{
         category_name: number of category
@@ -288,6 +289,12 @@ class TabularFeature1DExtractor(GeneralFeatureExtractor):
         # print(self.encoder_in_channels)
         # print(self.out_channels)
 
+        print("Tabular1DFeatureExtractor using categorical_col_maps")
+        print(categorical_col_maps) 
+
+        print("Tabular1DFeatureExtractor using categorical_col_maps")
+
+
         # This is exact how the paper built it: https://arxiv.org/pdf/2303.14080.pdf
         # # but in the original paper, one-hot encoding is used, which means the first Linear is served as embedding layer.
         # self.encoder = nn.Sequential(
@@ -318,9 +325,17 @@ class TabularFeature1DExtractor(GeneralFeatureExtractor):
         cat_data = chain_map(cat_data)
         cat_data = {k: torch.stack(v, dim=0) for k, v in cat_data.items()}
 
+        # print("Tabular1DFeatureExtractor using cat_data")
+        # print(cat_data)
+
+
         num_data = None
         if self.has_num > 0:
             num_data = torch.stack(num_data)
+
+        # print("Tabular1DFeatureExtractor using num_data")
+        # print(num_data)
+        
 
         # x = x[self.source_name]
 
@@ -328,12 +343,17 @@ class TabularFeature1DExtractor(GeneralFeatureExtractor):
             emb_out = OrderedDict({k: self.embs[k](v) for k, v in cat_data.items()})
             emb_out_cat = torch.concat(list(emb_out.values()), axis=1)
 
+            # print("the shape of emb_out_cat")
+            # print(emb_out_cat.shape)
+
             if self.has_num:
                 tabular_input = torch.concat([num_data, emb_out_cat], dim=1)
             else:
                 tabular_input = emb_out_cat
 
-            self.tabular_input = tabular_input
+            # print("the shape of tabular_input")
+            # print(tabular_input.shape)
+            # self.tabular_input = tabular_input
 
         else:
             tabular_input = num_data

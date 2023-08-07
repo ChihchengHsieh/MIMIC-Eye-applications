@@ -19,7 +19,7 @@ from PIL import Image
 from copy import deepcopy
 from data.strs import SourceStrs, TaskStrs
 from data.utils import chain_map
-
+from torchvision import transforms
 from models.setup import ModelSetup
 from .constants import (
     DEFAULT_REFLACX_BOX_COORD_COLS,
@@ -89,6 +89,7 @@ class PhysioNetClincalDataset(data.Dataset):
         image_std=[0.229, 0.224, 0.225],
         image_size=512,
         random_flip=True,
+        use_aug=False,
         # use_clinical_df=False,
     ):
         # Data loading selections
@@ -99,6 +100,7 @@ class PhysioNetClincalDataset(data.Dataset):
         self.image_size = image_size
         self.image_mean = image_mean
         self.image_std = image_std
+        self.use_aug = self.split_str == 'train' and use_aug
 
         # self.bbox_to_mask = bbox_to_mask
         # self.use_clinical_df = use_clinical_df
@@ -155,37 +157,80 @@ class PhysioNetClincalDataset(data.Dataset):
         # self.preprocess_label()
 
         self.chexpert_label_cols = [
-            c for c in self.df.columns if c.endswith("_chexpert")
+            "Atelectasis_chexpert",
+            "Cardiomegaly_chexpert",
+            "Consolidation_chexpert",
+            "Edema_chexpert",
+            "Enlarged Cardiomediastinum_chexpert",
+            "Fracture_chexpert",
+            "Lung Lesion_chexpert",
+            "Lung Opacity_chexpert",
+            "No Finding_chexpert",
+            "Pleural Effusion_chexpert",
+            "Pleural Other_chexpert",
+            "Pneumonia_chexpert",
+            "Pneumothorax_chexpert",
+            "Support Devices_chexpert",
         ]
-        self.negbio_label_cols = [c for c in self.df.columns if c.endswith("_negbio")]
+        self.negbio_label_cols = [
+            "Atelectasis_negbio",
+            "Cardiomegaly_negbio",
+            "Consolidation_negbio",
+            "Edema_negbio",
+            "Enlarged Cardiomediastinum_negbio",
+            "Fracture_negbio",
+            "Lung Lesion_negbio",
+            "Lung Opacity_negbio",
+            "No Finding_negbio",
+            "Pleural Effusion_negbio",
+            "Pleural Other_negbio",
+            "Pneumonia_negbio",
+            "Pneumothorax_negbio",
+            "Support Devices_negbio",
+        ]
 
         # remove all numerical cols:
         # In case we used it somewhere.
 
-        cols_to_remove = [
-            "age",
-            "temperature",
-            "heartrate",
-            "resprate",
-            "o2sat",
-            "sbp",
-            "dbp",
-            # "pain",
-            "acuity",
-        ]
+        # cols_to_remove = [
+        #     "age",
+        #     "temperature",
+        #     "heartrate",
+        #     "resprate",
+        #     "o2sat",
+        #     "sbp",
+        #     "dbp",
+        #     # "pain",
+        #     "acuity",
+        # ]
 
-        for col in cols_to_remove:
-            del self.df[col]
+        # for col in cols_to_remove:
+        #     del self.df[col]
 
         ## check if the col is still df:
-        for col in cols_to_remove:
-            if col in self.df.columns:
-                raise StopIteration(f"Column {col} is not removed from dataframe.")
-
-
+        # for col in cols_to_remove:
+        #     if col in self.df.columns:
+        #         raise StopIteration(f"Column {col} is not removed from dataframe.")
 
         if self.with_clinical_input or self.with_clinical_label:
             self.preprocess_clinical_df()
+
+        ### create aug transformer here.
+
+        self.resize_transform = Flip_resize_transform = transforms.Compose(
+            [
+                transforms.Resize([image_size, image_size]),
+            ]
+        )
+
+        self.aug_transform = transforms.Compose(
+            [
+                transforms.RandomHorizontalFlip(p=0.5),
+                transforms.RandomRotation(45),
+                transforms.ColorJitter(brightness=0.5, contrast=0.5, saturation=0.5),
+                transforms.RandomResizedCrop([image_size, image_size], scale=(0.2, 1.0)),
+            ]
+        )
 
         super().__init__()
 
@@ -225,67 +270,9 @@ class PhysioNetClincalDataset(data.Dataset):
 
         return label_cols[idx]
 
-    # def disease_to_idx(self, disease: str) -> int:
-    #     if not disease in self.labels_cols:
-    #         raise Exception("This disease is not the label.")
-
-    #     if disease == "background":
-    #         return 0
-
-    #     return self.labels_cols.index(disease) + 1
-
-    # def label_idx_to_disease(self, idx: int) -> str:
-    #     if idx == 0:
-    #         return "background"
-
-    #     if idx > len(self.labels_cols):
-    #         return f"exceed label range :{idx}"
-
-    #     return self.labels_cols[idx - 1]
 
     def __len__(self) -> int:
         return len(self.df)
-
-    # def generate_bboxes_df(
-    #     self,
-    #     ellipse_df: pd.DataFrame,
-    # ) -> pd.DataFrame:
-    #     boxes_df = ellipse_df[self.box_fix_cols]
-
-    #     # relabel repetitive columns.
-    #     for k in self.repetitive_label_map.keys():
-    #         boxes_df.loc[:, k] = ellipse_df[
-    #             [l for l in self.repetitive_label_map[k] if l in ellipse_df.columns]
-    #         ].any(axis=1)
-
-    #     # filtering out the diseases not in the label_cols
-    #     boxes_df = boxes_df[boxes_df[self.labels_cols].any(axis=1)]
-    #     label_df = boxes_df.loc[:, DEFAULT_REFLACX_LABEL_COLS].reset_index(drop=True)
-
-    #     labels = [
-    #         list(label_df.loc[i, label_df.any()].index) for i in range(len(label_df))
-    #     ]
-
-    #     boxes_df["label"] = labels
-
-    #     new_df_list = []
-
-    #     if len(boxes_df) > 0:
-    #         for _, instance in boxes_df.iterrows():
-    #             for l in instance["label"]:
-    #                 new_df_list.append(
-    #                     {
-    #                         "xmin": instance["xmin"],
-    #                         "ymin": instance["ymin"],
-    #                         "xmax": instance["xmax"],
-    #                         "ymax": instance["ymax"],
-    #                         "label": l,
-    #                     }
-    #                 )
-
-    #     return pd.DataFrame(
-    #         new_df_list, columns=["xmin", "ymin", "xmax", "ymax", "label"]
-    #     )
 
     def normalize(self, image: torch.Tensor) -> torch.Tensor:
         if not image.is_floating_point():
@@ -310,8 +297,16 @@ class PhysioNetClincalDataset(data.Dataset):
         return image
 
     def prepare_xray(self, xray):
+        if self.use_aug and random.random() <0.95: # 5% for direct resize.
+            xray = self.aug_transform(xray)
+            # print(f"Using Augmentation in {self.split_str}.")
+            if self.split_str == 'test' or self.split_str == 'val':
+                raise StopIteration(f"Shouldn't use Augmentation in {self.split_str}")
+        else:
+            xray = self.resize_transform(xray)
+
         xray = self.normalize(xray)
-        xray = self.resize_image(image=xray, size=[self.image_size, self.image_size])
+        # xray = self.resize_image(image=xray, size=[self.image_size, self.image_size])
         return xray
 
     def prepare_clinical_labels(self, data):
@@ -356,98 +351,6 @@ class PhysioNetClincalDataset(data.Dataset):
 
         return clinical_cat, clinical_num
 
-    # def get_fixation_image(self, data, mode):
-
-    #     fiaxtion_df = pd.read_csv(data["fixation_path"])
-
-    #     if mode != "normal":
-    #         utterance_path = os.path.join(
-    #             os.path.dirname(data["fixation_path"]),
-    #             "timestamps_transcription.csv",
-    #         )
-    #         utterance_df = pd.read_csv(utterance_path)
-    #         report_starting_time = utterance_df.iloc[0]["timestamp_start_word"]
-    #         if mode == "reporting":
-    #             fiaxtion_df = fiaxtion_df[
-    #                 fiaxtion_df["timestamp_start_fixation"] >= report_starting_time
-    #             ]
-    #         elif mode == "silent":
-    #             fiaxtion_df = fiaxtion_df[
-    #                 fiaxtion_df["timestamp_start_fixation"] < report_starting_time
-    #             ]
-    #         else:
-    #             raise ValueError("Not supported fiaxtions mode.")
-
-    #     fix = get_heatmap(
-    #         get_fixations_dict_from_fixation_df(fiaxtion_df),
-    #         (data["image_size_x"], data["image_size_y"]),
-    #     ).astype(np.float32)
-
-    #     return fix
-
-    # def prepare_fixation(self, data, mode):
-    #     fix = self.get_fixation_image(data, mode)
-    #     fix = tvF.to_tensor(fix)
-    #     fix = self.normalize(fix)
-    #     fix = self.resize_image(image=fix, size=[self.image_size, self.image_size])
-    #     return fix
-
-    # def resize_boxes(
-    #     self, boxes: torch.Tensor, original_size: List[int], new_size: List[int]
-    # ) -> torch.Tensor:
-    #     ratios = [
-    #         torch.tensor(s, dtype=torch.float32, device=boxes.device)
-    #         / torch.tensor(s_orig, dtype=torch.float32, device=boxes.device)
-    #         for s, s_orig in zip(new_size, original_size)
-    #     ]
-    #     ratio_height, ratio_width = ratios
-    #     xmin, ymin, xmax, ymax = boxes.unbind(1)
-
-    #     xmin = xmin * ratio_width
-    #     xmax = xmax * ratio_width
-    #     ymin = ymin * ratio_height
-    #     ymax = ymax * ratio_height
-    #     return torch.stack((xmin, ymin, xmax, ymax), dim=1)
-
-    # def get_lesion_detection_labels(self, idx, data, original_size, new_size):
-    #     bboxes_df = self.generate_bboxes_df(pd.read_csv(data["bbox_path"]))
-    #     bboxes = np.array(bboxes_df[self.box_coord_cols], dtype=float)
-    #     # x1, y1, x2, y2
-    #     unsized_boxes = bboxes
-    #     bboxes = torch.tensor(bboxes)
-    #     bboxes = self.resize_boxes(
-    #         boxes=bboxes, original_size=original_size, new_size=new_size
-    #     )
-    #     # resize the bb
-    #     # Calculate area of boxes.
-    #     area = (bboxes[:, 3] - bboxes[:, 1]) * (bboxes[:, 2] - bboxes[:, 0])
-    #     unsized_area = (unsized_boxes[:, 3] - unsized_boxes[:, 1]) * (
-    #         unsized_boxes[:, 2] - unsized_boxes[:, 0]
-    #     )
-    #     labels = torch.tensor(
-    #         np.array(bboxes_df["label"].apply(lambda l: self.disease_to_idx(l))).astype(
-    #             int
-    #         ),
-    #         dtype=torch.int64,
-    #     )
-
-    #     image_id = torch.tensor([idx])
-    #     num_objs = bboxes.shape[0]
-    #     # S suppose all instances are not crowd
-    #     iscrowd = torch.zeros((num_objs,), dtype=torch.int64)
-    #     # prepare lesion-detection targets
-    #     return {
-    #         "boxes": bboxes,
-    #         "labels": labels,
-    #         "image_id": image_id,
-    #         "area": area,
-    #         "iscrowd": iscrowd,
-    #         "dicom_id": data["dicom_id"],
-    #         "image_path": data["image_path"],
-    #         "original_image_sizes": original_size,
-    #         "unsized_boxes": unsized_boxes,
-    #         "unsized_area": unsized_area,
-    #     }
 
     def __getitem__(
         self, idx: int
@@ -460,11 +363,11 @@ class PhysioNetClincalDataset(data.Dataset):
 
         # it's necesary to load the image, becasue it will be used to run the transform.
         xray: Image = Image.open(data["image_path"]).convert("RGB")
-        xray_height, xray_width =  xray.height, xray.width
+        xray_height, xray_width = xray.height, xray.width
         xray = tvF.to_tensor(xray)
         original_image_size = xray.shape[-2:]
 
-        flip = self.random_flip and random.random() < 0.5
+        # flip = self.random_flip and random.random() < 0.5
         # contain this one into thhe
 
         """
@@ -474,8 +377,6 @@ class PhysioNetClincalDataset(data.Dataset):
 
         if self.with_xrays_input:
             xray = self.prepare_xray(xray)
-            if flip:
-                xray = xray.flip(-1)
             input_dict.update({SourceStrs.XRAYS: {"images": xray}})
 
         if self.with_clinical_input:
@@ -484,50 +385,8 @@ class PhysioNetClincalDataset(data.Dataset):
                 {SourceStrs.CLINICAL: {"cat": clinical_cat, "num": clinical_num}}
             )
 
-        # if self.with_fixations_input:
-        #     fix = self.prepare_fixation(data, self.fiaxtions_mode_input)
-        #     if flip:
-        #         fix = fix.flip(-1)
-
-        #     input_dict.update({SourceStrs.FIXATIONS: {"images": fix}})
-
-        # do bboxes resizing later.
-        # if self.obj_det_task_name in target_index:
-        #     bbox = target_index[self.obj_det_task_name]["boxes"]
-        #     bbox = resize_boxes(bbox, (h, w), image.shape[-2:])
-        #     target_index[self.obj_det_task_name]["boxes"] = bbox
-
-        """
-        targets
-        """
-
         target = OrderedDict({})
-
-        # if self.with_bboxes_label:
-        #     lesion_target = self.get_lesion_detection_labels(
-        #         idx=idx,
-        #         data=data,
-        #         original_size=original_image_size,
-        #         new_size=[self.image_size, self.image_size],
-        #     )
-
-        #     if flip:
-        #         width = self.image_size
-        #         bbox = lesion_target["boxes"]
-        #         bbox[:, [0, 2]] = width - bbox[:, [2, 0]]
-        #         lesion_target["boxes"] = bbox
-
-        #     if self.bbox_to_mask:
-        #         # generate masks from bboxes
-        #         num_objs = lesion_target["boxes"].shape[0]
-        #         masks = torch.zeros((num_objs, xray_height, xray_width), dtype=torch.uint8)
-        #         for i, b in enumerate(lesion_target["boxes"]):
-        #             b = b.int()
-        #             masks[i, b[1] : b[3], b[0] : b[2]] = 1
-        #         lesion_target["masks"] = masks
-
-        #     target.update({TaskStrs.LESION_DETECTION: lesion_target})
-
+  
         if self.with_clinical_label:
             # clinical_label_dict = self.prepare_clinical_labels(data)
             target.update(
@@ -669,10 +528,11 @@ class PhysioNetClincalDataset(data.Dataset):
 
             for col in self.clinical_numerical_cols:
                 # calculate mean and std
-                mean = training_clinical_mean_std[col]['mean']
-                std = training_clinical_mean_std[col]['std']
+                mean = training_clinical_mean_std[col]["mean"]
+                std = training_clinical_mean_std[col]["std"]
                 self.df[col] = (self.df[col] - mean) / std
                 # self.df[col] = normalize([self.df[col]], axis=1)[0]
+
 
 class ReflacxDataset(data.Dataset):
     """
@@ -740,7 +600,9 @@ class ReflacxDataset(data.Dataset):
         self.with_clinical_label = with_clinical_label
 
         self.with_clinical_input = with_clincal_input
-        self.should_load_clinical_df = self.with_clinical_input or self.with_clinical_label or self.use_clinical_df
+        self.should_load_clinical_df = (
+            self.with_clinical_input or self.with_clinical_label or self.use_clinical_df
+        )
         if self.should_load_clinical_df:
             self.clinical_numerical_cols = clinical_numerical_cols
             self.normalise_clinical_num = normalise_clinical_num
@@ -1080,7 +942,7 @@ class ReflacxDataset(data.Dataset):
 
         # it's necesary to load the image, becasue it will be used to run the transform.
         xray: Image = Image.open(data["image_path"]).convert("RGB")
-        xray_height, xray_width =  xray.height, xray.width
+        xray_height, xray_width = xray.height, xray.width
         xray = tvF.to_tensor(xray)
         original_image_size = xray.shape[-2:]
 
@@ -1140,7 +1002,9 @@ class ReflacxDataset(data.Dataset):
             if self.bbox_to_mask:
                 # generate masks from bboxes
                 num_objs = lesion_target["boxes"].shape[0]
-                masks = torch.zeros((num_objs, xray_height, xray_width), dtype=torch.uint8)
+                masks = torch.zeros(
+                    (num_objs, xray_height, xray_width), dtype=torch.uint8
+                )
                 for i, b in enumerate(lesion_target["boxes"]):
                     b = b.int()
                     masks[i, b[1] : b[3], b[0] : b[2]] = 1
@@ -1289,12 +1153,7 @@ class ReflacxDataset(data.Dataset):
 
             for col in self.clinical_numerical_cols:
                 # calculate mean and std
-                mean = training_clinical_mean_std[col]['mean']
-                std = training_clinical_mean_std[col]['std']
+                mean = training_clinical_mean_std[col]["mean"]
+                std = training_clinical_mean_std[col]["std"]
                 self.df[col] = (self.df[col] - mean) / std
                 # self.df[col] = normalize([self.df[col]], axis=1)[0]
-
-
-
-
-

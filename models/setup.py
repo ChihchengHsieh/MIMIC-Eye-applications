@@ -97,6 +97,7 @@ class ModelSetup:
     # L2 regulariser
     weight_decay: float = 0.05
     sgb_momentum: float = 0.9
+    use_aug_for_cl: bool = False
 
     #####################
     # Pretrained setup.
@@ -279,6 +280,8 @@ class ModelSetup:
     cl_pretrained_load_params: list = field(default_factory=lambda: [])
 
     cl_pj_dim: int = 128
+
+    use_pytorch_pretrained_backbone: bool =True
 
     def has_categorical_clinical_features(
         self,

@@ -121,20 +121,35 @@ class ContrastiveLearningPerformer(GeneralTaskPerformer):
         z_m1 = fused[self.params.m1]
         z_m2 = fused[self.params.m2]
 
+        # print("shape of z_m1")
+        # print(z_m1.shape)
+        # print("shape of z_m2")
+        # print(z_m2.shape)
+
+        ## is it the problem with matrix?
+
         ## pooler to have 1D tensor (N, D)
 
         if self.m1_pooler:
             z_m1 = self.m1_pooler(z_m1)
 
         if self.m2_pooler:
-            z_m2 = self.m1_pooler(z_m2)
+            z_m2 = self.m2_pooler(z_m2)
 
         ## to projector
 
         z_m1 = self.m1_pj(z_m1)
         z_m2 = self.m2_pj(z_m2)
 
+        # print("shape of z_m1 after pj")
+        # print(z_m1.shape)
+        # print("shape of z_m2 after pj")
+        # print(z_m2.shape)
+
         loss, logits = self.loss_fn(z_m1, z_m2)
+
+        # raise StopIteration()
+
 
         return {
             "losses": {"contrastive-loss": loss},

@@ -128,6 +128,7 @@ def get_heatmap(fix, dispsize, pupil=False, alpha=0.5, savefilename=None):
     return heatmap
 
 
+
 def word_said_in_fix(fixation_df, timestamps_transcription_df):
 
     for index1 in fixation_df.index:
