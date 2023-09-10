@@ -328,14 +328,12 @@ class TabularFeature1DExtractor(GeneralFeatureExtractor):
         # print("Tabular1DFeatureExtractor using cat_data")
         # print(cat_data)
 
-
-        num_data = None
+        # num_data = None
         if self.has_num > 0:
             num_data = torch.stack(num_data)
 
         # print("Tabular1DFeatureExtractor using num_data")
         # print(num_data)
-        
 
         # x = x[self.source_name]
 

@@ -261,12 +261,12 @@ class ModelSetup:
 
     clinical_lesion_detection_use_1D_fusion: bool = False
 
-    including_clinical_num: List[str] = field(
-        default_factory=lambda: DEFAULT_MIMIC_CLINICAL_NUM_COLS
-    )
-    including_clinical_cat: List[str] = field(
-        default_factory=lambda: DEFAULT_MIMIC_CLINICAL_CAT_COLS
-    )
+    # including_clinical_num: List[str] = field(
+    #     default_factory=lambda: DEFAULT_MIMIC_CLINICAL_NUM_COLS
+    # )
+    # including_clinical_cat: List[str] = field(
+    #     default_factory=lambda: DEFAULT_MIMIC_CLINICAL_CAT_COLS
+    # )
 
     clinical_use_expander: bool = False
 
@@ -283,31 +283,31 @@ class ModelSetup:
 
     use_pytorch_pretrained_backbone: bool =True
 
-    def has_categorical_clinical_features(
-        self,
-    ):
-        if not hasattr(self, "including_clinical_cat"):
-            return True
+    # def has_categorical_clinical_features(
+    #     self,
+    # ):
+    #     if not hasattr(self, "including_clinical_cat"):
+    #         return True
 
-        return (
-            not self.including_clinical_cat is None
-            and len(self.including_clinical_cat) > 0
-        )
+    #     return (
+    #         not self.including_clinical_cat is None
+    #         and len(self.including_clinical_cat) > 0
+    #     )
 
-    def get_clinical_num_len(self):
-        return (
-            len(self.including_clinical_num)
-            if hasattr(self, "including_clinical_num")
-            else 9
-        )
+    # def get_clinical_num_len(self):
+    #     return (
+    #         len(self.including_clinical_num)
+    #         if hasattr(self, "including_clinical_num")
+    #         else 9
+    #     )
 
-    def get_input_dim_for_spa(
-        self,
-    ):
-        if not SourceStrs.CLINICAL in self.sources:
-            return 0
+    # def get_input_dim_for_spa(
+    #     self,
+    # ):
+    #     if not SourceStrs.CLINICAL in self.sources:
+    #         return 0
 
-        if self.has_categorical_clinical_features():
-            return self.clinical_input_channels
+    #     if self.has_categorical_clinical_features():
+    #         return self.clinical_input_channels
 
-        return self.get_clinical_num_len()
+    #     return self.get_clinical_num_len()
